@@ -16,6 +16,9 @@ import '../community/community_screen.dart';
 import '../ijazah/ijazah_screen.dart';
 import '../localization/language_selector_dialog.dart';
 import '../localization/services/translation_service.dart';
+import '../voice_search/voice_search_screen.dart';
+import '../heatmap/heatmap_screen.dart';
+import '../scoring/services/inference_config_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -314,6 +317,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   builder: (_) => const IjazahScreen(),
                 ));
               },
+            ),
+          ]),
+          _sectionTitle(s, 'AI Recitation & Voice Engine'),
+          _card([
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.graphic_eq_rounded, color: ItqanColors.gold),
+              title: const Text('Quran Voice Search', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text('Shazam for Quran: Recite to find Ayah', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const VoiceSearchScreen(),
+                ));
+              },
+            ),
+            const Divider(color: ItqanColors.charcoal),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.grid_view_rounded, color: ItqanColors.gold),
+              title: const Text('Quran Memorization Heatmap', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text('Visual 30 Juz & 114 Surah Retention Grid', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const HeatmapScreen(),
+                ));
+              },
+            ),
+            const Divider(color: ItqanColors.charcoal),
+            Text('Speech Recognition Engine Mode', style: ItqanTypography.caption),
+            const SizedBox(height: ItqanSpacing.sm),
+            _SegmentedPicker(
+              options: const ['Auto', 'On-Device', 'ML Server', 'Acoustic'],
+              selected: switch (ref.watch(inferenceConfigProvider)) {
+                InferenceMode.onDevice => 'On-Device',
+                InferenceMode.mlServer => 'ML Server',
+                InferenceMode.acoustic => 'Acoustic',
+                _ => 'Auto',
+              },
+              onSelect: (v) {
+                final mode = switch (v) {
+                  'On-Device' => InferenceMode.onDevice,
+                  'ML Server' => InferenceMode.mlServer,
+                  'Acoustic' => InferenceMode.acoustic,
+                  _ => InferenceMode.auto,
+                };
+                ref.read(inferenceConfigProvider.notifier).setMode(mode);
+              },
+              compact: true,
             ),
           ]),
           _sectionTitle(s, context.l10n.settingsAbout),

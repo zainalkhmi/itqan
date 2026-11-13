@@ -6,6 +6,7 @@ import '../../core/services/native_asr_service.dart';
 import '../quran/models/ayah.dart';
 import '../tajweed/tajweed_data.dart';
 import 'models/score_result.dart';
+import 'services/inference_config_service.dart';
 
 class ScoringService {
   final Dio _dio = Dio(BaseOptions(
@@ -23,9 +24,19 @@ class ScoringService {
     required Ayah ayah,
     Duration? recordingDuration,
     Uint8List? audioBytes,
+    InferenceMode mode = InferenceMode.auto,
   }) async {
+    // If acoustic engine mode is explicitly selected, skip model inference
+    if (mode == InferenceMode.acoustic) {
+      return _scoreLocally(
+        audioPath: audioPath,
+        ayah: ayah,
+        recordingDuration: recordingDuration,
+      );
+    }
+
     // 1. Try Tier 1: Embedded Native On-Device Engine (Android C++ JNI / iOS)
-    if (!kIsWeb) {
+    if (!kIsWeb && (mode == InferenceMode.auto || mode == InferenceMode.onDevice)) {
       final isNativeAvailable = await NativeAsrService.isNativeAvailable();
       if (isNativeAvailable) {
         try {

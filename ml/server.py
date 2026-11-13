@@ -22,6 +22,9 @@ from pydantic import BaseModel
 
 from pathlib import Path
 from quran_aligner import evaluate_recitation, normalize_arabic
+from quran_search_index import search_quran_verse
+from fastapi import WebSocket, WebSocketDisconnect
+import json
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("itqan-ml")
@@ -104,6 +107,12 @@ class ScoreRequest(BaseModel):
     surah: int = 1
     ayah: int = 1
     duration_ms: Optional[int] = None
+
+
+class VoiceSearchRequest(BaseModel):
+    audio_base64: Optional[str] = None
+    query_text: Optional[str] = None
+    top_k: int = 5
 
 
 @app.get("/")
@@ -216,6 +225,96 @@ async def score_endpoint(request: ScoreRequest):
     )
     result["ai_model"] = MODEL_ID if model_ready else "acoustic_fallback"
     return result
+
+
+@app.post("/voice-search")
+async def voice_search_endpoint(request: VoiceSearchRequest):
+    """
+    Quran Voice Search ('Shazam for the Quran').
+    Accepts speech audio or transcribed query text and identifies the matching Ayah.
+    """
+    query_text = (request.query_text or "").strip()
+    
+    if request.audio_base64 and model_ready and asr_pipeline is not None:
+        try:
+            audio_bytes = base64.b64decode(request.audio_base64)
+            audio_np, sr = parse_audio_data(audio_bytes)
+            pred = asr_pipeline({"raw": audio_np, "sampling_rate": sr}, generate_kwargs={"language": "ar", "task": "transcribe"})
+            query_text = pred.get("text", "").strip()
+            logger.info(f"Voice search transcription -> '{query_text}'")
+        except Exception as e:
+            logger.error(f"Error during voice search transcription: {e}")
+            
+    if not query_text:
+        return {"query": "", "matches": [], "message": "No query text or audio could be parsed."}
+        
+    matches = search_quran_verse(query_text, top_k=request.top_k)
+    return {
+        "query": query_text,
+        "matches": matches,
+        "topMatch": matches[0] if matches else None,
+        "count": len(matches),
+    }
+
+
+@app.websocket("/ws/recitation-stream")
+async def recitation_stream_ws(websocket: WebSocket):
+    """
+    Real-time streaming recitation tracker (Tarteel-style live unmasking).
+    Accepts audio chunks and streams back progressive word matches.
+    """
+    await websocket.accept()
+    logger.info("Recitation streaming client connected")
+    try:
+        expected_words = []
+        transcribed_accum = ""
+        while True:
+            msg = await websocket.receive_text()
+            data = json.loads(msg)
+            action = data.get("action")
+            
+            if action == "init":
+                expected_words = data.get("expected_words", [])
+                logger.info(f"Initialized stream for {len(expected_words)} words")
+                await websocket.send_json({"type": "ready", "word_count": len(expected_words)})
+                
+            elif action == "chunk":
+                audio_b64 = data.get("audio_base64")
+                if audio_b64 and model_ready and asr_pipeline is not None:
+                    try:
+                        audio_bytes = base64.b64decode(audio_b64)
+                        audio_np, sr = parse_audio_data(audio_bytes)
+                        pred = asr_pipeline({"raw": audio_np, "sampling_rate": sr}, generate_kwargs={"language": "ar", "task": "transcribe"})
+                        partial_text = pred.get("text", "").strip()
+                        if partial_text:
+                            transcribed_accum += " " + partial_text
+                    except Exception as e:
+                        logger.warning(f"Partial chunk transcription error: {e}")
+                elif data.get("text_hint"):
+                    transcribed_accum += " " + data.get("text_hint")
+                    
+                # Evaluate progress against expected words
+                norm_accum = normalize_arabic(transcribed_accum).split()
+                unmasked = []
+                for idx, exp_word in enumerate(expected_words):
+                    norm_exp = normalize_arabic(exp_word)
+                    if any(norm_exp in obs or obs in norm_exp for obs in norm_accum):
+                        unmasked.append(idx)
+                        
+                await websocket.send_json({
+                    "type": "progress",
+                    "unmasked_indices": unmasked,
+                    "completed": len(unmasked) == len(expected_words) and len(expected_words) > 0,
+                    "transcribed": transcribed_accum.strip(),
+                })
+                
+            elif action == "finish":
+                await websocket.send_json({"type": "finished", "transcription": transcribed_accum.strip()})
+                break
+    except WebSocketDisconnect:
+        logger.info("Recitation streaming client disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
 
 
 if __name__ == "__main__":

@@ -16,8 +16,9 @@ import 'recitation_controller.dart';
 import 'widgets/record_button.dart';
 import 'widgets/waveform_visualizer.dart';
 import 'widgets/word_token.dart';
+import 'widgets/live_tracking_unmasking_card.dart';
 
-enum HifzMode { off, blank, blur, firstLetter }
+enum HifzMode { off, liveUnmasking, blank, blur, firstLetter }
 
 class RecitationScreen extends ConsumerStatefulWidget {
   final Ayah ayah;
@@ -42,6 +43,8 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   bool _isPeeking = false;
   int _peekCount = 0;
   Timer? _peekTimer;
+  final Set<int> _liveUnmaskedIndices = {};
+  int _liveActiveWordIndex = 0;
 
   @override
   void initState() {
@@ -171,6 +174,17 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     if (isRecording) btnState = RecordButtonState.recording;
     if (isProcessing) btnState = RecordButtonState.processing;
 
+    // In liveUnmasking mode, unmask words progressively during recording
+    if (isRecording && _hifzMode == HifzMode.liveUnmasking) {
+      final elapsedSec = data.recordingDuration.inSeconds;
+      final totalWords = _currentAyah.words.length;
+      if (totalWords > 0) {
+        final expectedWordIndex = (elapsedSec * 0.8).floor().clamp(0, totalWords - 1);
+        _liveUnmaskedIndices.add(expectedWordIndex);
+        _liveActiveWordIndex = (expectedWordIndex + 1).clamp(0, totalWords - 1);
+      }
+    }
+
     final currentAyahIdx = _surahAyahs.indexWhere((a) => a.ayahNumber == _currentAyah.ayahNumber);
     final hasPrev = _surahAyahs.isNotEmpty && currentAyahIdx > 0;
     final hasNext = _surahAyahs.isNotEmpty && currentAyahIdx != -1 && currentAyahIdx + 1 < _surahAyahs.length;
@@ -251,75 +265,89 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                         _buildHifzModeSelector(),
                         const SizedBox(height: ItqanSpacing.md),
 
-                        if (_isPeeking) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            margin: const EdgeInsets.only(bottom: ItqanSpacing.sm),
-                            decoration: BoxDecoration(
-                              color: ItqanColors.gold.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(ItqanRadius.full),
-                              border: Border.all(color: ItqanColors.gold),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.visibility_rounded, size: 14, color: ItqanColors.gold),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'Peeking... (-5 pts penalty) • ${_peekCount}x peeked',
-                                  style: const TextStyle(color: ItqanColors.gold, fontSize: 11, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
+                        if (_hifzMode == HifzMode.liveUnmasking) ...[
+                          LiveTrackingUnmaskingCard(
+                            ayah: _currentAyah,
+                            isTracking: isRecording,
+                            unmaskedIndices: _liveUnmaskedIndices,
+                            currentActiveWordIndex: _liveActiveWordIndex,
+                            onWordTap: (idx) {
+                              setState(() {
+                                _liveUnmaskedIndices.add(idx);
+                              });
+                            },
                           ),
-                        ],
-
-                        // Full text or masked text
-                        _buildAyahTextDisplay(),
-                        const SizedBox(height: ItqanSpacing.lg),
-
-                        // Word tokens or masked tokens
-                        _buildWordTokensDisplay(),
-                        const SizedBox(height: ItqanSpacing.lg),
-
-                        // Translation
-                        if (_currentAyah.translation.isNotEmpty && (_hifzMode == HifzMode.off || _isPeeking))
-                          Text(
-                            '"${_currentAyah.translation}"',
-                            style: ItqanTypography.caption.copyWith(
-                              fontStyle: FontStyle.italic,
+                        ] else ...[
+                          if (_isPeeking) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              margin: const EdgeInsets.only(bottom: ItqanSpacing.sm),
+                              decoration: BoxDecoration(
+                                color: ItqanColors.gold.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(ItqanRadius.full),
+                                border: Border.all(color: ItqanColors.gold),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.visibility_rounded, size: 14, color: ItqanColors.gold),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Peeking... (-5 pts penalty) • ${_peekCount}x peeked',
+                                    style: const TextStyle(color: ItqanColors.gold, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
                             ),
-                            textAlign: TextAlign.center,
-                          ),
+                          ],
 
-                        // Peek Button (only when in Hifz mode)
-                        if (_hifzMode != HifzMode.off) ...[
-                          const SizedBox(height: ItqanSpacing.md),
-                          OutlinedButton.icon(
-                            onPressed: _triggerPeek,
-                            icon: Icon(
-                              _isPeeking ? Icons.visibility_rounded : Icons.visibility_outlined,
-                              color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
-                              size: 18,
+                          // Full text or masked text
+                          _buildAyahTextDisplay(),
+                          const SizedBox(height: ItqanSpacing.lg),
+
+                          // Word tokens or masked tokens
+                          _buildWordTokensDisplay(),
+                          const SizedBox(height: ItqanSpacing.lg),
+
+                          // Translation
+                          if (_currentAyah.translation.isNotEmpty && (_hifzMode == HifzMode.off || _isPeeking))
+                            Text(
+                              '"${_currentAyah.translation}"',
+                              style: ItqanTypography.caption.copyWith(
+                                fontStyle: FontStyle.italic,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            label: Text(
-                              _isPeeking
-                                  ? 'Peeking active (2.5s)'
-                                  : 'Peek Ayah (-5 pts)${_peekCount > 0 ? " • ${_peekCount}x" : ""}',
-                              style: TextStyle(
+
+                          // Peek Button (only when in Hifz mode)
+                          if (_hifzMode != HifzMode.off) ...[
+                            const SizedBox(height: ItqanSpacing.md),
+                            OutlinedButton.icon(
+                              onPressed: _triggerPeek,
+                              icon: Icon(
+                                _isPeeking ? Icons.visibility_rounded : Icons.visibility_outlined,
                                 color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
+                                size: 18,
+                              ),
+                              label: Text(
+                                _isPeeking
+                                    ? 'Peeking active (2.5s)'
+                                    : 'Peek Ayah (-5 pts)${_peekCount > 0 ? " • ${_peekCount}x" : ""}',
+                                style: TextStyle(
+                                  color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: _isPeeking ? ItqanColors.gold : ItqanColors.charcoal,
+                                ),
+                                backgroundColor: _isPeeking ? ItqanColors.gold.withOpacity(0.15) : Colors.transparent,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ItqanRadius.full)),
                               ),
                             ),
-                            style: OutlinedButton.styleFrom(
-                              side: BorderSide(
-                                color: _isPeeking ? ItqanColors.gold : ItqanColors.charcoal,
-                              ),
-                              backgroundColor: _isPeeking ? ItqanColors.gold.withOpacity(0.15) : Colors.transparent,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ItqanRadius.full)),
-                            ),
-                          ),
+                          ],
                         ],
                       ],
                     ),
@@ -417,14 +445,18 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
         color: ItqanColors.charcoal,
         borderRadius: BorderRadius.circular(ItqanRadius.full),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _hifzChip('Read', HifzMode.off, Icons.menu_book_rounded),
-          _hifzChip('Blur', HifzMode.blur, Icons.blur_on_rounded),
-          _hifzChip('Blank', HifzMode.blank, Icons.visibility_off_rounded),
-          _hifzChip('Initials', HifzMode.firstLetter, Icons.title_rounded),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _hifzChip('Read', HifzMode.off, Icons.menu_book_rounded),
+            _hifzChip('Live Unmask', HifzMode.liveUnmasking, Icons.mic_external_on_rounded),
+            _hifzChip('Blur', HifzMode.blur, Icons.blur_on_rounded),
+            _hifzChip('Blank', HifzMode.blank, Icons.visibility_off_rounded),
+            _hifzChip('Initials', HifzMode.firstLetter, Icons.title_rounded),
+          ],
+        ),
       ),
     );
   }

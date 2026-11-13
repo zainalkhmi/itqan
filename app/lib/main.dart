@@ -16,6 +16,8 @@ void main() async {
   await Hive.openBox('sync_queue');
   await Hive.openBox('sync_account');
   await Hive.openBox('ijazah_box');
+  await Hive.openBox('voice_search_history');
+  await Hive.openBox('inference_config');
 
   final onboardingDone = Hive.box('settings').get('onboarding_done', defaultValue: false) as bool;
 

@@ -23,6 +23,8 @@ import '../qiraat/qiraat_screen.dart';
 import '../community/community_screen.dart';
 import '../ijazah/ijazah_screen.dart';
 import '../localization/language_selector_dialog.dart';
+import '../voice_search/voice_search_screen.dart';
+import '../heatmap/heatmap_screen.dart';
 
 // Index provider for bottom nav
 final _navIndexProvider = StateProvider<int>((ref) => 0);
@@ -361,6 +363,39 @@ class _HomeBody extends ConsumerWidget {
                             },
                           ),
                         );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: ItqanSpacing.lg),
+                const Text('AI Voice Engine & Heatmap', style: ItqanTypography.label),
+                const SizedBox(height: ItqanSpacing.md),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: ItqanSpacing.md,
+                  mainAxisSpacing: ItqanSpacing.md,
+                  childAspectRatio: 1.4,
+                  children: [
+                    _ActionCard(
+                      icon: Icons.graphic_eq_rounded,
+                      label: 'Quran Voice Search',
+                      subtitle: 'Shazam for Quran',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const VoiceSearchScreen(),
+                        ));
+                      },
+                    ),
+                    _ActionCard(
+                      icon: Icons.grid_view_rounded,
+                      label: 'Hifz Memory Heatmap',
+                      subtitle: '30 Juz Retention Map',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const HeatmapScreen(),
+                        ));
                       },
                     ),
                   ],
