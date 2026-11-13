@@ -43,3 +43,4 @@ class VoiceSearchMatch {
     'matchedQuery': matchedQuery,
   };
 }
+

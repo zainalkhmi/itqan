@@ -95,3 +95,4 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
     );
   }
 }
+

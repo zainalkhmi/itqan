@@ -230,3 +230,4 @@ def search_quran_verse(query_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
     # Sort descending by confidence
     results.sort(key=lambda x: x["confidence"], reverse=True)
     return results[:top_k]
+
