@@ -11,6 +11,11 @@ import '../adaptive/placement_test_screen.dart';
 import '../sync/sync_management_screen.dart';
 import '../tashih/tashih_screen.dart';
 import '../memorization/murajaah_screen.dart';
+import '../qiraat/qiraat_screen.dart';
+import '../community/community_screen.dart';
+import '../ijazah/ijazah_screen.dart';
+import '../localization/language_selector_dialog.dart';
+import '../localization/services/translation_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -190,11 +195,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onChanged: (v) => _update(s.copyWith(theme: v)),
             ),
             const SizedBox(height: ItqanSpacing.sm),
-            _DropdownRow(
-              label: AppLocalizations.of(context)!.settingsLanguage,
-              value: s.language,
-              options: const {'arabic': 'العربية', 'english': 'English', 'french': 'Français'},
-              onChanged: (v) => _update(s.copyWith(language: v)),
+            InkWell(
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => LanguageSelectorDialog(
+                    currentCode: s.language,
+                    onSelected: (lang) => _update(s.copyWith(language: lang.code)),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(AppLocalizations.of(context)!.settingsLanguage, style: ItqanTypography.body),
+                    Row(
+                      children: [
+                        Text(
+                          '${TranslationService().getLanguage(s.language)?.flagEmoji ?? "🌐"} ${TranslationService().getLanguage(s.language)?.name ?? s.language}',
+                          style: ItqanTypography.body.copyWith(color: ItqanColors.gold),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down, color: ItqanColors.gold),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: ItqanSpacing.sm),
             _SwitchRow(
@@ -240,6 +271,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(
                   builder: (_) => const MurajaahScreen(),
+                ));
+              },
+            ),
+          ]),
+          _sectionTitle(s, 'Scale & Community (Phase 4)'),
+          _card([
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.record_voice_over_rounded, color: ItqanColors.gold),
+              title: const Text('Canonical Qira\'at', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text('Hafs, Warsh, Qalun, Ad-Duri riwayat', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const QiraatScreen(),
+                ));
+              },
+            ),
+            const Divider(color: ItqanColors.charcoal),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.groups_rounded, color: ItqanColors.gold),
+              title: const Text('Community & Halaqah Circles', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text('Global leaderboards & daily challenges', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const CommunityScreen(),
+                ));
+              },
+            ),
+            const Divider(color: ItqanColors.charcoal),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.workspace_premium_rounded, color: ItqanColors.gold),
+              title: const Text('Ijazah & Sanad Chain', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              subtitle: Text('29-generation transmission tree & verified certificate', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const IjazahScreen(),
                 ));
               },
             ),

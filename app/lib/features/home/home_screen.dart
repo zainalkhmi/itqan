@@ -19,6 +19,10 @@ import '../adaptive/placement_test_screen.dart';
 import '../memorization/murajaah_screen.dart';
 import '../tashih/tashih_screen.dart';
 import '../sync/sync_management_screen.dart';
+import '../qiraat/qiraat_screen.dart';
+import '../community/community_screen.dart';
+import '../ijazah/ijazah_screen.dart';
+import '../localization/language_selector_dialog.dart';
 
 // Index provider for bottom nav
 final _navIndexProvider = StateProvider<int>((ref) => 0);
@@ -297,6 +301,69 @@ class _HomeBody extends ConsumerWidget {
                       builder: (_) => const SyncManagementScreen(),
                     ));
                   },
+                ),
+                const SizedBox(height: ItqanSpacing.lg),
+                const Text('Scale & Community (Phase 4)', style: ItqanTypography.label),
+                const SizedBox(height: ItqanSpacing.md),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: ItqanSpacing.md,
+                  mainAxisSpacing: ItqanSpacing.md,
+                  childAspectRatio: 1.4,
+                  children: [
+                    _ActionCard(
+                      icon: Icons.record_voice_over_rounded,
+                      label: 'Canonical Qira\'at',
+                      subtitle: 'Hafs, Warsh, Qalun, Duri',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const QiraatScreen(),
+                        ));
+                      },
+                    ),
+                    _ActionCard(
+                      icon: Icons.groups_rounded,
+                      label: 'Community & Halaqah',
+                      subtitle: 'Leaderboard & Circles',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const CommunityScreen(),
+                        ));
+                      },
+                    ),
+                    _ActionCard(
+                      icon: Icons.workspace_premium_rounded,
+                      label: 'Ijazah & Sanad',
+                      subtitle: 'Transmission Tree',
+                      onTap: () {
+                        Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const IjazahScreen(),
+                        ));
+                      },
+                    ),
+                    _ActionCard(
+                      icon: Icons.language_rounded,
+                      label: '20+ Languages',
+                      subtitle: 'Global Localization',
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (ctx) => LanguageSelectorDialog(
+                            currentCode: ref.read(settingsProvider).language,
+                            onSelected: (lang) {
+                              ref.read(settingsProvider.notifier).update(
+                                ref.read(settingsProvider).copyWith(language: lang.code),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
                 const SizedBox(height: ItqanSpacing.xl),
               ]),

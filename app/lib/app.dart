@@ -10,15 +10,14 @@ import 'features/settings/settings_service.dart';
 // Locale provider — driven by user settings (defaults to English)
 final localeProvider = Provider<Locale>((ref) {
   final settings = ref.watch(settingsProvider);
-  switch (settings.language) {
-    case 'arabic':
-      return const Locale('ar');
-    case 'french':
-      return const Locale('fr');
-    case 'english':
-    default:
-      return const Locale('en'); // English is DEFAULT
-  }
+  final lang = settings.language.toLowerCase();
+  if (lang == 'arabic' || lang == 'ar') return const Locale('ar');
+  if (lang == 'french' || lang == 'fr') return const Locale('fr');
+  if (lang == 'indonesian' || lang == 'id') return const Locale('id');
+  if (lang == 'malay' || lang == 'ms') return const Locale('ms');
+  if (lang == 'urdu' || lang == 'ur') return const Locale('ur');
+  if (lang == 'turkish' || lang == 'tr') return const Locale('tr');
+  return const Locale('en'); // English is DEFAULT
 });
 
 class ItqanApp extends ConsumerWidget {
@@ -48,11 +47,14 @@ class ItqanApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // RTL for Arabic, LTR for others
+      // RTL for Arabic, Urdu, Persian, LTR for others
       builder: (context, child) {
-        final isArabic = locale.languageCode == 'ar';
+        final isRtl = locale.languageCode == 'ar' ||
+            locale.languageCode == 'ur' ||
+            locale.languageCode == 'fa' ||
+            locale.languageCode == 'ps';
         return Directionality(
-          textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
           child: child!,
         );
       },
