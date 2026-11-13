@@ -396,3 +396,4 @@ class _ChallengesTab extends StatelessWidget {
     );
   }
 }
+

@@ -173,3 +173,4 @@ class DailyChallenge {
 
   double get progressPercent => (progress / target).clamp(0.0, 1.0);
 }
+

@@ -205,3 +205,4 @@ class QiraatService {
     return defaultText;
   }
 }
+

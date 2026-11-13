@@ -95,3 +95,4 @@ class IjazahCertificate {
     isVerified: map['isVerified'] as bool? ?? true,
   );
 }
+

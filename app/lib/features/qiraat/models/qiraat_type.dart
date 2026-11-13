@@ -46,3 +46,4 @@ class QiraatInfo {
 
   String get id => riwayah.name;
 }
+

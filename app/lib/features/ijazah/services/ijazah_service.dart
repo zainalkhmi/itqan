@@ -149,3 +149,4 @@ class IjazahService {
     await issueCertificate(starter);
   }
 }
+

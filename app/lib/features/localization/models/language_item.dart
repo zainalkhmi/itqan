@@ -13,3 +13,4 @@ class LanguageItem {
     this.isRtl = false,
   });
 }
+
