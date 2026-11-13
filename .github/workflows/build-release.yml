@@ -1,0 +1,92 @@
+name: Build Production Release Bundles
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    name: Build Android Release (AAB & APK)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code analysis & unit tests
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build Android App Bundle (.aab)
+        run: flutter build appbundle --release
+
+      - name: Build Split Release APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload Android App Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: itqan-app-release-aab
+          path: app/build/app/outputs/bundle/release/app-release.aab
+
+      - name: Upload Release APKs Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: itqan-release-apks
+          path: app/build/app/outputs/flutter-apk/*release*.apk
+
+  build-ios:
+    name: Build iOS Archive
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS IPA (No-codesign for CI)
+        run: flutter build ios --release --no-codesign
+
+      - name: Upload iOS Runner App
+        uses: actions/upload-artifact@v4
+        with:
+          name: itqan-ios-runner
+          path: app/build/ios/iphoneos/Runner.app
+

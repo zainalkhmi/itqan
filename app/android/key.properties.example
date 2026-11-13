@@ -1,0 +1,8 @@
+# Example release keystore configuration for Google Play publishing
+# Generate a keystore with:
+# keytool -genkey -v -keystore itqan-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias itqan-key
+keyAlias=itqan-key
+keyPassword=YourSecretKeyPassword
+storeFile=../itqan-release.jks
+storePassword=YourSecretStorePassword
+
