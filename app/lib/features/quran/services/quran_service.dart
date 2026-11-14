@@ -6,21 +6,41 @@ import '../models/ayah.dart';
 // ─── Page Data Models ────────────────────────────────────────────────────────
 
 class PageWord {
+  final int id;
+  final int position;
+  final int lineNumber;
+  final String charTypeName;
+  final String audioUrl;
   final String textUthmani;
   final String transliteration;
   final String translation;
+  final String verseKey;
 
   const PageWord({
+    this.id = 0,
+    this.position = 0,
+    this.lineNumber = 1,
+    this.charTypeName = 'word',
+    this.audioUrl = '',
     required this.textUthmani,
     required this.transliteration,
     required this.translation,
+    this.verseKey = '',
   });
 
-  factory PageWord.fromJson(Map<String, dynamic> json) {
+  bool get isVerseEnd => charTypeName == 'end';
+
+  factory PageWord.fromJson(Map<String, dynamic> json, {String verseKey = ''}) {
     return PageWord(
-      textUthmani: json['text_uthmani'] as String? ?? '',
+      id: json['id'] as int? ?? 0,
+      position: json['position'] as int? ?? 0,
+      lineNumber: json['line_number'] as int? ?? 1,
+      charTypeName: json['char_type_name'] as String? ?? 'word',
+      audioUrl: json['audio_url'] as String? ?? '',
+      textUthmani: json['text_uthmani'] as String? ?? json['text'] as String? ?? '',
       transliteration: json['transliteration']?['text'] as String? ?? '',
       translation: json['translation']?['text'] as String? ?? '',
+      verseKey: verseKey,
     );
   }
 }
@@ -131,7 +151,7 @@ class QuranService {
         queryParameters: {
           'words': 'true',
           'translations': '131',
-          'word_fields': 'text_uthmani,transliteration,translation',
+          'word_fields': 'text_uthmani,transliteration,translation,line_number,position,audio_url,char_type_name',
           'fields': 'text_uthmani,verse_key,page_number,juz_number,hizb_number',
           'per_page': '50',
         },
@@ -160,7 +180,7 @@ class QuranService {
       hizbNumber = vMap['hizb_number'] as int? ?? hizbNumber;
 
       final words = (vMap['words'] as List<dynamic>? ?? [])
-          .map((w) => PageWord.fromJson(w as Map<String, dynamic>))
+          .map((w) => PageWord.fromJson(w as Map<String, dynamic>, verseKey: verseKey))
           .toList();
 
       String translation = '';

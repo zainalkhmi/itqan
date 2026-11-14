@@ -11,6 +11,9 @@ import '../recitation/recitation_screen.dart';
 import 'mushaf_screen.dart'; // quranServiceProvider, surahsProvider
 import 'providers/reading_position_provider.dart';
 import 'services/reading_position_service.dart';
+import 'models/mushaf_layout.dart';
+import 'services/mushaf_layout_service.dart';
+import 'widgets/mushaf_15_line_view.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -38,6 +41,9 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   late PageController _pageController;
   late int _currentPage;
   bool _showTranslation = false;
+  bool _is15LineView = true;
+  bool _isHifzMode = false;
+  MushafEdition _edition = MushafEdition.madinah15Lines;
 
   // Auto-save debounce
   Timer? _saveDebounce;
@@ -292,6 +298,99 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // 15-Line Mushaf Mode Toggle
+                      IconButton(
+                        icon: Icon(
+                          _is15LineView ? Icons.auto_stories_rounded : Icons.format_align_right_rounded,
+                          color: _is15LineView ? ItqanColors.gold : ItqanColors.mist,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          setState(() => _is15LineView = !_is15LineView);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _is15LineView
+                                    ? '15-Line Physical Mushaf View'
+                                    : 'Flow Text View',
+                              ),
+                              duration: const Duration(seconds: 1),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        tooltip: _is15LineView ? '15-Line Mushaf Mode' : 'Flow Text Mode',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      const SizedBox(width: 4),
+                      // Hifz Spatial Mode toggle
+                      if (_is15LineView) ...[
+                        IconButton(
+                          icon: Icon(
+                            _isHifzMode ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                            color: _isHifzMode ? ItqanColors.gold : ItqanColors.mist,
+                            size: 18,
+                          ),
+                          onPressed: () => setState(() => _isHifzMode = !_isHifzMode),
+                          tooltip: _isHifzMode ? 'Hifz Mode (Tap to Peek)' : 'Enable Hifz Mode',
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(width: 4),
+                        // Edition menu (Madinah vs Indopak)
+                        PopupMenuButton<MushafEdition>(
+                          icon: const Icon(Icons.style_rounded, color: ItqanColors.mist, size: 18),
+                          tooltip: 'Mushaf Edition',
+                          padding: EdgeInsets.zero,
+                          color: ItqanColors.onyx,
+                          onSelected: (ed) => setState(() => _edition = ed),
+                          itemBuilder: (ctx) => [
+                            PopupMenuItem(
+                              value: MushafEdition.madinah15Lines,
+                              child: Row(
+                                children: [
+                                  if (_edition == MushafEdition.madinah15Lines)
+                                    const Icon(Icons.check, color: ItqanColors.gold, size: 16)
+                                  else
+                                    const SizedBox(width: 16),
+                                  const SizedBox(width: 8),
+                                  const Text('Madinah (15 Lines)', style: TextStyle(color: Colors.white, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: MushafEdition.indopak15Lines,
+                              child: Row(
+                                children: [
+                                  if (_edition == MushafEdition.indopak15Lines)
+                                    const Icon(Icons.check, color: ItqanColors.gold, size: 16)
+                                  else
+                                    const SizedBox(width: 16),
+                                  const SizedBox(width: 8),
+                                  const Text('Indopak (15 Lines)', style: TextStyle(color: Colors.white, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      // Translation toggle (only when not in 15-line mode)
+                      if (!_is15LineView) ...[
+                        IconButton(
+                          icon: Icon(
+                            Icons.translate_rounded,
+                            color: _showTranslation ? ItqanColors.gold : ItqanColors.mist,
+                            size: 18,
+                          ),
+                          onPressed: () => setState(() => _showTranslation = !_showTranslation),
+                          tooltip: AppLocalizations.of(context)!.mushafTranslationToggle,
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       // Bookmark button
                       IconButton(
                         icon: Icon(
@@ -303,19 +402,6 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                         ),
                         onPressed: _toggleBookmark,
                         tooltip: _isBookmarked ? AppLocalizations.of(context)!.mushafBookmarkRemoved : AppLocalizations.of(context)!.mushafBookmarkSaved,
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(width: 4),
-                      // Translation toggle
-                      IconButton(
-                        icon: Icon(
-                          Icons.translate_rounded,
-                          color: _showTranslation ? ItqanColors.gold : ItqanColors.mist,
-                          size: 18,
-                        ),
-                        onPressed: () => setState(() => _showTranslation = !_showTranslation),
-                        tooltip: AppLocalizations.of(context)!.mushafTranslationToggle,
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero,
                       ),
@@ -337,6 +423,9 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                   return _MushafPage(
                     pageNumber: page,
                     showTranslation: _showTranslation,
+                    is15LineView: _is15LineView,
+                    isHifzMode: _isHifzMode,
+                    edition: _edition,
                   );
                 },
               ),
@@ -425,8 +514,17 @@ class _NavArrow extends StatelessWidget {
 class _MushafPage extends ConsumerWidget {
   final int pageNumber;
   final bool showTranslation;
+  final bool is15LineView;
+  final bool isHifzMode;
+  final MushafEdition edition;
 
-  const _MushafPage({required this.pageNumber, required this.showTranslation});
+  const _MushafPage({
+    required this.pageNumber,
+    required this.showTranslation,
+    this.is15LineView = true,
+    this.isHifzMode = false,
+    this.edition = MushafEdition.madinah15Lines,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -454,6 +552,21 @@ class _MushafPage extends ConsumerWidget {
           data: (list) => {for (final s in list) s.number: s},
           orElse: () => <int, Surah>{},
         );
+
+        if (is15LineView) {
+          final layoutService = MushafLayoutService();
+          final layout = layoutService.buildPageLayout(
+            pageData,
+            edition: edition,
+            surahMap: surahMap,
+          );
+
+          return Mushaf15LineView(
+            layout: layout,
+            surahMap: surahMap,
+            isHifzMode: isHifzMode,
+          );
+        }
 
         final groups = <_SurahGroup>[];
         for (final verse in pageData.verses) {
