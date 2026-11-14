@@ -80,9 +80,11 @@ class ScoringService {
         'surah': ayah.surahNumber,
         'ayah': ayah.ayahNumber,
         'duration_ms': recordingDuration?.inMilliseconds ?? 4000,
+        'ai_engine': mode == InferenceMode.tajweedFormer ? 'tajweedformer' : 'auto',
       };
 
-      final response = await _dio.post('/score', data: payload);
+      final endpoint = mode == InferenceMode.tajweedFormer ? '/score/tajweedformer' : '/score';
+      final response = await _dio.post(endpoint, data: payload);
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
         return _parseMlScoreResult(data, ayah);
@@ -194,6 +196,7 @@ class ScoringService {
       ayahNumber: ayah.ayahNumber,
       transcription: data['transcription'] as String?,
       aiModel: data['ai_model'] as String?,
+      tajweedFormerDetails: data['tajweedFormerDetails'] as Map<String, dynamic>?,
     );
   }
 

@@ -99,6 +99,7 @@ class ScoreResult {
   final String? aiModel;
   final String? hifzMode;
   final int peeksUsed;
+  final Map<String, dynamic>? tajweedFormerDetails;
 
   const ScoreResult({
     required this.overall,
@@ -114,6 +115,7 @@ class ScoreResult {
     this.aiModel,
     this.hifzMode,
     this.peeksUsed = 0,
+    this.tajweedFormerDetails,
   });
 
   ScoreResult copyWith({
@@ -130,6 +132,7 @@ class ScoreResult {
     String? aiModel,
     String? hifzMode,
     int? peeksUsed,
+    Map<String, dynamic>? tajweedFormerDetails,
   }) {
     return ScoreResult(
       overall: overall ?? this.overall,
@@ -145,6 +148,7 @@ class ScoreResult {
       aiModel: aiModel ?? this.aiModel,
       hifzMode: hifzMode ?? this.hifzMode,
       peeksUsed: peeksUsed ?? this.peeksUsed,
+      tajweedFormerDetails: tajweedFormerDetails ?? this.tajweedFormerDetails,
     );
   }
 

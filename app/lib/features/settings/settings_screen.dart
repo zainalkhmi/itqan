@@ -348,26 +348,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               },
             ),
             const Divider(color: ItqanColors.charcoal),
-            Text('Speech Recognition Engine Mode', style: ItqanTypography.caption),
+            Text('Speech Recognition & Tajweed Engine', style: ItqanTypography.caption),
             const SizedBox(height: ItqanSpacing.sm),
             _SegmentedPicker(
-              options: const ['Auto', 'On-Device', 'ML Server', 'Acoustic'],
+              options: const ['Auto', 'TajweedFormer', 'Whisper', 'On-Device', 'Acoustic'],
               selected: switch (ref.watch(inferenceConfigProvider)) {
+                InferenceMode.tajweedFormer => 'TajweedFormer',
+                InferenceMode.mlServer => 'Whisper',
                 InferenceMode.onDevice => 'On-Device',
-                InferenceMode.mlServer => 'ML Server',
                 InferenceMode.acoustic => 'Acoustic',
                 _ => 'Auto',
               },
               onSelect: (v) {
                 final mode = switch (v) {
+                  'TajweedFormer' => InferenceMode.tajweedFormer,
+                  'Whisper' => InferenceMode.mlServer,
                   'On-Device' => InferenceMode.onDevice,
-                  'ML Server' => InferenceMode.mlServer,
                   'Acoustic' => InferenceMode.acoustic,
                   _ => InferenceMode.auto,
                 };
                 ref.read(inferenceConfigProvider.notifier).setMode(mode);
               },
               compact: true,
+            ),
+            const SizedBox(height: ItqanSpacing.xs),
+            Text(
+              switch (ref.watch(inferenceConfigProvider)) {
+                InferenceMode.tajweedFormer => 'Quran Lab TajweedFormer V4 — Specialized Neural Engine for Madd (count duration), Ghunnah, Qalqalah, and Shaddah (quranlab.ai).',
+                InferenceMode.mlServer => 'Tarteel AI / OpenAI Whisper ASR — Speech-to-Text alignment and phonetic word comparison.',
+                InferenceMode.onDevice => 'On-Device INT8 ONNX Model — Ultra-low latency and offline on-device processing.',
+                InferenceMode.acoustic => 'Deterministic Acoustic Engine — Offline fallback evaluating duration, pitch, and energy without heavy ML.',
+                _ => 'Auto — Automatically selects TajweedFormer V4 / Whisper when available, falling back to on-device engine.',
+              },
+              style: ItqanTypography.caption.copyWith(fontSize: 11, color: ItqanColors.mist),
             ),
           ]),
           _sectionTitle(s, 'Offline Storage & Downloads'),

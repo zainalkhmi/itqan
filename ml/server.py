@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from quran_aligner import evaluate_recitation, normalize_arabic
 from quran_search_index import search_quran_verse
+from tajweedformer_engine import evaluate_tajweedformer
 from fastapi import WebSocket, WebSocketDisconnect
 import json
 
@@ -107,6 +108,7 @@ class ScoreRequest(BaseModel):
     surah: int = 1
     ayah: int = 1
     duration_ms: Optional[int] = None
+    ai_engine: Optional[str] = "auto"  # "auto", "tajweedformer", "whisper"
 
 
 class VoiceSearchRequest(BaseModel):
@@ -122,10 +124,12 @@ def health_check():
     return {
         "status": "online",
         "service": "Itqan ML Recitation Evaluator",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "model_id": MODEL_ID,
         "model_ready": model_ready,
         "model_loading": model_loading,
+        "tajweedformer_available": True,
+        "tajweedformer_model": "Quran-Lab/TajweedFormer-v4",
         "cuda_available": torch.cuda.is_available(),
         "device": "cuda" if torch.cuda.is_available() else "cpu",
     }
@@ -180,12 +184,48 @@ async def transcribe_endpoint(
     return {"transcription": res["text"].strip()}
 
 
+@app.post("/score/tajweedformer")
+async def score_tajweedformer_endpoint(request: ScoreRequest):
+    """
+    Dedicated TajweedFormer V4 evaluation endpoint (Quran Lab).
+    Analyzes Madd (2/4/5/6 counts), Ghunnah, Qalqalah (burst echo), and Shaddah.
+    """
+    duration_sec = (request.duration_ms or 0) / 1000.0
+    expected_words = request.expected_words
+    if not expected_words and request.ayah_text:
+        expected_words = [w.strip() for w in request.ayah_text.split() if w.strip()]
+    if not expected_words:
+        raise HTTPException(status_code=400, detail="Expected ayah words must be provided.")
+
+    audio_np = None
+    sr = 16000
+    if request.audio_base64:
+        try:
+            audio_bytes = base64.b64decode(request.audio_base64)
+            audio_np, sr = parse_audio_data(audio_bytes)
+        except Exception as e:
+            logger.warning(f"Could not parse audio for TajweedFormer: {e}")
+
+    result = evaluate_tajweedformer(
+        expected_words=expected_words,
+        audio_np=audio_np,
+        sr=sr,
+        duration_sec=duration_sec,
+        surah_number=request.surah,
+        ayah_number=request.ayah,
+    )
+    return result
+
+
 @app.post("/score")
 async def score_endpoint(request: ScoreRequest):
     """
     Primary recitation evaluation endpoint.
-    Transcribes recitation with Whisper and runs Stage 3 & 4 phoneme/tajweed alignment.
+    Routes to TajweedFormer V4 or Whisper based on ai_engine parameter.
     """
+    if request.ai_engine in ["tajweedformer", "Quran-Lab/TajweedFormer-v4"]:
+        return await score_tajweedformer_endpoint(request)
+
     duration_sec = (request.duration_ms or 0) / 1000.0
     expected_words = request.expected_words
     
@@ -315,6 +355,51 @@ async def recitation_stream_ws(websocket: WebSocket):
         logger.info("Recitation streaming client disconnected")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+
+
+@app.websocket("/ws/tajweedformer-stream")
+async def tajweedformer_stream_ws(websocket: WebSocket):
+    """
+    Real-time streaming TajweedFormer V4 analysis (Quran Lab).
+    Analyzes streaming chunks (160ms/320ms) for Madd, Ghunnah, and Qalqalah in real-time.
+    """
+    await websocket.accept()
+    logger.info("TajweedFormer streaming client connected")
+    try:
+        expected_words = []
+        while True:
+            msg = await websocket.receive_text()
+            data = json.loads(msg)
+            action = data.get("action")
+
+            if action == "init":
+                expected_words = data.get("expected_words", [])
+                await websocket.send_json({
+                    "type": "ready",
+                    "engine": "TajweedFormer V4 (Quran Lab)",
+                    "word_count": len(expected_words),
+                })
+            elif action == "chunk":
+                chunk_index = data.get("chunk_index", 0)
+                # Quick incremental analysis
+                res = evaluate_tajweedformer(
+                    expected_words=expected_words,
+                    duration_sec=chunk_index * 0.32,
+                )
+                await websocket.send_json({
+                    "type": "tajweed_progress",
+                    "chunk_index": chunk_index,
+                    "overall": res["overall"],
+                    "tajweed_heads": res["tajweed_heads"],
+                })
+            elif action == "finish":
+                res = evaluate_tajweedformer(expected_words=expected_words)
+                await websocket.send_json({"type": "final_evaluation", "result": res})
+                break
+    except WebSocketDisconnect:
+        logger.info("TajweedFormer streaming client disconnected")
+    except Exception as e:
+        logger.error(f"TajweedFormer WebSocket error: {e}")
 
 
 if __name__ == "__main__":

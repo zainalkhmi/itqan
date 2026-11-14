@@ -58,10 +58,14 @@ class ResultsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: result.aiModel!.contains('whisper') ? ItqanColors.gold.withOpacity(0.15) : ItqanColors.charcoal,
+                    color: result.aiModel!.toLowerCase().contains('tajweedformer')
+                        ? ItqanColors.correct.withOpacity(0.15)
+                        : (result.aiModel!.contains('whisper') ? ItqanColors.gold.withOpacity(0.15) : ItqanColors.charcoal),
                     borderRadius: BorderRadius.circular(ItqanRadius.full),
                     border: Border.all(
-                      color: result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist.withOpacity(0.3),
+                      color: result.aiModel!.toLowerCase().contains('tajweedformer')
+                          ? ItqanColors.correct
+                          : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist.withOpacity(0.3)),
                       width: 1,
                     ),
                   ),
@@ -69,17 +73,25 @@ class ResultsScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        result.aiModel!.contains('whisper') ? Icons.auto_awesome : Icons.graphic_eq,
+                        result.aiModel!.toLowerCase().contains('tajweedformer')
+                            ? Icons.psychology_rounded
+                            : (result.aiModel!.contains('whisper') ? Icons.auto_awesome : Icons.graphic_eq),
                         size: 14,
-                        color: result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist,
+                        color: result.aiModel!.toLowerCase().contains('tajweedformer')
+                            ? ItqanColors.correct
+                            : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist),
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        result.aiModel!.contains('whisper') ? 'Whisper AI Quran Engine (Phase 2)' : 'On-Device Acoustic Engine',
+                        result.aiModel!.toLowerCase().contains('tajweedformer')
+                            ? 'TajweedFormer V4 (Quran Lab)'
+                            : (result.aiModel!.contains('whisper') ? 'Whisper AI Quran Engine' : 'On-Device Acoustic Engine'),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist,
+                          color: result.aiModel!.toLowerCase().contains('tajweedformer')
+                              ? ItqanColors.correct
+                              : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist),
                         ),
                       ),
                     ],
@@ -168,6 +180,47 @@ class ResultsScreen extends StatelessWidget {
                           onPracticeAyah: onRetry,
                         ),
                         child: const Text('Inspect', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (result.tajweedFormerDetails != null) ...[
+                const SizedBox(height: ItqanSpacing.md),
+                Container(
+                  padding: const EdgeInsets.all(ItqanSpacing.md),
+                  decoration: BoxDecoration(
+                    color: isDark ? ItqanColors.onyx : ItqanColors.lightCard,
+                    borderRadius: BorderRadius.circular(ItqanRadius.md),
+                    border: Border.all(color: ItqanColors.correct.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.psychology_rounded, color: ItqanColors.correct, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'TajweedFormer V4 Neural Heads (Quran Lab)',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : ItqanColors.lightTextPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          _tajweedHeadBadge('Madd', '${result.tajweedFormerDetails!['maddCount']} rules', ItqanColors.tajweedMadd),
+                          _tajweedHeadBadge('Ghunnah', '${result.tajweedFormerDetails!['ghunnahCount']} rules', ItqanColors.tajweedGhunnah),
+                          _tajweedHeadBadge('Qalqalah', '${result.tajweedFormerDetails!['qalqalahCount']} rules', ItqanColors.tajweedQalqalah),
+                          _tajweedHeadBadge('Tempo', '${result.tajweedFormerDetails!['tempo'] ?? "Normal"}', ItqanColors.correct),
+                        ],
                       ),
                     ],
                   ),
@@ -280,6 +333,21 @@ class ResultsScreen extends StatelessWidget {
         ),
       );
     }
+  }
+
+  Widget _tajweedHeadBadge(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+    );
   }
 }
 

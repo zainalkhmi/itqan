@@ -5,12 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-enum InferenceMode { auto, onDevice, mlServer, acoustic }
+enum InferenceMode { auto, tajweedFormer, onDevice, mlServer, acoustic }
 
 class InferenceEngineStatus {
   final InferenceMode mode;
   final bool isServerOnline;
   final bool isOnDeviceModelPresent;
+  final bool isTajweedFormerAvailable;
   final String modelName;
   final int latencyMs;
 
@@ -18,6 +19,7 @@ class InferenceEngineStatus {
     required this.mode,
     required this.isServerOnline,
     required this.isOnDeviceModelPresent,
+    this.isTajweedFormerAvailable = true,
     required this.modelName,
     required this.latencyMs,
   });
@@ -40,6 +42,7 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
       final box = Hive.box('inference_config');
       final val = box.get('mode', defaultValue: 'auto') as String;
       state = switch (val) {
+        'tajweedFormer' => InferenceMode.tajweedFormer,
         'onDevice' => InferenceMode.onDevice,
         'mlServer' => InferenceMode.mlServer,
         'acoustic' => InferenceMode.acoustic,
@@ -61,8 +64,11 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
 
   Future<InferenceEngineStatus> checkStatus() async {
     bool serverOnline = false;
+    bool tajweedFormerAvailable = false;
     int latency = 0;
-    String model = 'tarteel-ai/whisper-base-ar-quran';
+    String model = state == InferenceMode.tajweedFormer
+        ? 'Quran-Lab/TajweedFormer-v4'
+        : 'tarteel-ai/whisper-base-ar-quran';
 
     final stopwatch = Stopwatch()..start();
     try {
@@ -72,7 +78,10 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
       if (res.statusCode == 200 && res.data is Map) {
         serverOnline = true;
         latency = stopwatch.elapsedMilliseconds;
-        model = res.data['model_id'] as String? ?? model;
+        tajweedFormerAvailable = res.data['tajweedformer_available'] as bool? ?? true;
+        if (state != InferenceMode.tajweedFormer) {
+          model = res.data['model_id'] as String? ?? model;
+        }
       }
     } catch (_) {
       stopwatch.stop();
@@ -90,6 +99,7 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
       mode: state,
       isServerOnline: serverOnline,
       isOnDeviceModelPresent: onDevicePresent,
+      isTajweedFormerAvailable: tajweedFormerAvailable,
       modelName: model,
       latencyMs: latency,
     );
