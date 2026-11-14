@@ -211,3 +211,4 @@ class AudioDownloadService {
     return '${dBytes.toStringAsFixed(1)} ${suffixes[i]}';
   }
 }
+
