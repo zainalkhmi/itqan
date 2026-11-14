@@ -211,5 +211,34 @@ void main() {
       expect(find.textContaining('QPC V4 Script'), findsOneWidget);
       expect(find.textContaining('Ghunnah'), findsWidgets);
     });
+
+    testWidgets('Highlights mistake words in red and correct words in green', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 700,
+              width: 400,
+              child: Mushaf15LineView(
+                layout: sampleLayout,
+                surahMap: surahMap,
+                isHifzMode: false,
+                mistakeWordKeys: const {'1:3:1'},
+                correctWordKeys: const {'1:4:1'},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      final mistakeText = tester.widget<Text>(find.text('كلمة3'));
+      expect(mistakeText.style?.color, const Color(0xFFEF4444));
+      expect(mistakeText.style?.decoration, TextDecoration.lineThrough);
+
+      final correctText = tester.widget<Text>(find.text('كلمة4'));
+      expect(correctText.style?.color, const Color(0xFF34D399));
+    });
   });
 }

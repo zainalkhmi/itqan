@@ -253,3 +253,4 @@ def evaluate_tajweedformer(
         },
         "ai_model": MODEL_NAME,
     }
+

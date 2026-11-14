@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:itqan/features/onboarding/onboarding_screen.dart';
-import 'package:itqan/features/settings/settings_service.dart';
 import 'package:itqan/features/offline/services/audio_download_service.dart';
 
 void main() {

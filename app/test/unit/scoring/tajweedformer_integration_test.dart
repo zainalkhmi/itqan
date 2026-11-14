@@ -43,15 +43,6 @@ void main() {
     });
 
     test('ScoreResult accurately stores and copies tajweedFormerDetails', () {
-      final details = {
-        'engine': 'Quran-Lab/TajweedFormer-v4',
-        'vendor': 'Quran Lab (quranlab.ai)',
-        'maddCount': 3,
-        'ghunnahCount': 2,
-        'qalqalahCount': 1,
-        'tempo': 'Normal (Tadwir)',
-      };
-
       const result = ScoreResult(
         overall: 95.0,
         wordAccuracy: 96.0,
@@ -110,3 +101,4 @@ void main() {
     });
   });
 }
+
