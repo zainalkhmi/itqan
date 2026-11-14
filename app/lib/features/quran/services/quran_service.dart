@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../data/quran_catalog.dart';
 import '../models/ayah.dart';
+import '../../offline/services/offline_quran_service.dart';
 
 // ─── Page Data Models ────────────────────────────────────────────────────────
 
@@ -107,12 +109,17 @@ class QuranService {
       return list.map((j) => Surah.fromJson(j as Map<String, dynamic>)).toList();
     }
 
-    final response = await _dio.get('/chapters?language=en');
-    final chapters = response.data['chapters'] as List<dynamic>;
-    final surahs = chapters.map((j) => Surah.fromJson(j as Map<String, dynamic>)).toList();
+    try {
+      final response = await _dio.get('/chapters?language=en');
+      final chapters = response.data['chapters'] as List<dynamic>;
+      final surahs = chapters.map((j) => Surah.fromJson(j as Map<String, dynamic>)).toList();
 
-    await _cacheBox.put(cacheKey, jsonEncode(chapters));
-    return surahs;
+      await _cacheBox.put(cacheKey, jsonEncode(chapters));
+      return surahs;
+    } catch (e) {
+      // Offline fallback: load all 114 Surahs from catalog
+      return QuranCatalog.surahs;
+    }
   }
 
   Future<List<Ayah>> getAyahs(int surahNumber) async {
@@ -123,21 +130,30 @@ class QuranService {
       return list.map((j) => Ayah.fromJson(j as Map<String, dynamic>, surahNumber: surahNumber)).toList();
     }
 
-    final response = await _dio.get(
-      '/verses/by_chapter/$surahNumber',
-      queryParameters: {
-        'words': 'true',
-        'translations': '131',
-        'word_fields': 'text_uthmani,transliteration',
-        'per_page': '300',
-      },
-    );
+    try {
+      final response = await _dio.get(
+        '/verses/by_chapter/$surahNumber',
+        queryParameters: {
+          'words': 'true',
+          'translations': '131',
+          'word_fields': 'text_uthmani,transliteration',
+          'per_page': '300',
+        },
+      );
 
-    final verses = response.data['verses'] as List<dynamic>;
-    final ayahs = verses.map((j) => Ayah.fromJson(j as Map<String, dynamic>, surahNumber: surahNumber)).toList();
+      final verses = response.data['verses'] as List<dynamic>;
+      final ayahs = verses.map((j) => Ayah.fromJson(j as Map<String, dynamic>, surahNumber: surahNumber)).toList();
 
-    await _cacheBox.put(cacheKey, jsonEncode(verses));
-    return ayahs;
+      await _cacheBox.put(cacheKey, jsonEncode(verses));
+      return ayahs;
+    } catch (e) {
+      // Offline fallback: load bundled core ayahs if available
+      final offlineAyahs = OfflineQuranService.getBundledCoreAyahs(surahNumber);
+      if (offlineAyahs != null && offlineAyahs.isNotEmpty) {
+        return offlineAyahs;
+      }
+      rethrow;
+    }
   }
 
   Future<PageData> getPage(int pageNumber) async {

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../quran/models/ayah.dart';
 import '../scoring/scoring_service.dart';
 import '../scoring/models/score_result.dart';
+import '../offline/services/audio_download_service.dart';
 
 enum RecitationState { idle, playing, recording, processing, scored }
 
@@ -73,7 +74,23 @@ class RecitationController extends StateNotifier<RecitationData> {
     }
     try {
       state = state.copyWith(state: RecitationState.playing, error: null);
-      await _player.setUrl(state.ayah!.audioUrl);
+      final audioService = AudioDownloadService();
+      await audioService.init();
+
+      final surah = state.ayah!.surahNumber;
+      final ayah = state.ayah!.ayahNumber;
+      final isDownloaded = audioService.isAyahAudioDownloaded(surah, ayah);
+
+      if (isDownloaded) {
+        final localPath = audioService.getLocalAudioPath(surah, ayah);
+        if (localPath != null) {
+          await _player.setFilePath(localPath);
+        } else {
+          await _player.setUrl(state.ayah!.audioUrl);
+        }
+      } else {
+        await _player.setUrl(state.ayah!.audioUrl);
+      }
       await _player.play();
     } catch (e) {
       state = state.copyWith(state: RecitationState.idle, error: 'Audio error: $e');

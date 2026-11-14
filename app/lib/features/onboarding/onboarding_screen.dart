@@ -11,6 +11,9 @@ import '../home/home_screen.dart';
 import '../quran/models/ayah.dart';
 import '../quran/services/quran_service.dart';
 import '../recitation/recitation_screen.dart';
+import '../quran/data/quran_catalog.dart';
+import '../offline/services/audio_download_service.dart';
+import '../offline/services/offline_quran_service.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -26,7 +29,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   int _selectedGoal = 20;
 
   void _next() {
-    if (_page < 2) {
+    if (_page < 3) {
       _controller.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
     }
   }
@@ -74,6 +77,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               _GoalPage(
                 selected: _selectedGoal,
                 onSelect: (g) => setState(() => _selectedGoal = g),
+                onNext: _next,
+              ),
+              _OfflinePackPage(
                 onFinish: _finish,
               ),
             ],
@@ -85,7 +91,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (i) => AnimatedContainer(
+                children: List.generate(4, (i) => AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: _page == i ? 20 : 8,
@@ -221,8 +227,8 @@ class _LevelPage extends StatelessWidget {
 class _GoalPage extends StatelessWidget {
   final int selected;
   final ValueChanged<int> onSelect;
-  final VoidCallback onFinish;
-  const _GoalPage({required this.selected, required this.onSelect, required this.onFinish});
+  final VoidCallback onNext;
+  const _GoalPage({required this.selected, required this.onSelect, required this.onNext});
 
   @override
   Widget build(BuildContext context) {
@@ -261,7 +267,218 @@ class _GoalPage extends StatelessWidget {
               }).toList(),
             ),
             const SizedBox(height: ItqanSpacing.xxl),
-            Builder(builder: (ctx) => _GoldButton(label: AppLocalizations.of(ctx)?.onboardingStartBtn ?? 'Get Started', onPressed: onFinish)),
+            _GoldButton(label: 'Next', onPressed: onNext),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OfflinePackPage extends StatefulWidget {
+  final VoidCallback onFinish;
+  const _OfflinePackPage({required this.onFinish});
+
+  @override
+  State<_OfflinePackPage> createState() => _OfflinePackPageState();
+}
+
+class _OfflinePackPageState extends State<_OfflinePackPage> {
+  final AudioDownloadService _audioService = AudioDownloadService();
+  final OfflineQuranService _quranService = OfflineQuranService();
+
+  bool _isDownloading = false;
+  double _progress = 0.0;
+  String _statusText = '';
+  bool _isCompleted = false;
+
+  Future<void> _startDownload() async {
+    setState(() {
+      _isDownloading = true;
+      _statusText = 'Menyiapkan database teks Al-Qur\'an...';
+      _progress = 0.05;
+    });
+
+    try {
+      // 1. Download/seed essential Quran text
+      await _quranService.downloadAllQuranText(onProgress: (done, total, p) {
+        if (mounted) {
+          setState(() {
+            _progress = (p * 0.3).clamp(0.0, 0.3);
+            _statusText = 'Mengunduh teks Al-Qur\'an ($done/114)...';
+          });
+        }
+      });
+
+      // 2. Download Surah Al-Fatihah audio
+      if (mounted) {
+        setState(() {
+          _statusText = 'Mengunduh audio Surah Al-Fatihah...';
+          _progress = 0.35;
+        });
+      }
+      await _audioService.downloadSurah(1);
+
+      // 3. Download Juz 'Amma audio (Surah 78-114)
+      const startSurah = 78;
+      const endSurah = 114;
+      const totalSurahs = endSurah - startSurah + 1;
+      int count = 0;
+
+      for (int s = startSurah; s <= endSurah; s++) {
+        if (!mounted || !_isDownloading) break;
+        final name = QuranCatalog.getSurah(s).nameSimple;
+        setState(() {
+          _statusText = 'Mengunduh audio ($count/$totalSurahs): Surah $name...';
+          _progress = 0.35 + ((count / totalSurahs) * 0.65);
+        });
+        await _audioService.downloadSurah(s);
+        count++;
+      }
+
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _isCompleted = true;
+          _progress = 1.0;
+          _statusText = '✓ Al-Qur\'an & Audio Siap Digunakan Offline!';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _statusText = 'Unduhan dapat dilanjutkan nanti di Pengaturan.';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: ItqanSpacing.lg, vertical: ItqanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  color: ItqanColors.gold.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: ItqanColors.gold.withOpacity(0.4), width: 2),
+                ),
+                child: const Icon(Icons.cloud_download_rounded, color: ItqanColors.gold, size: 38),
+              ),
+            ),
+            const SizedBox(height: ItqanSpacing.lg),
+            const Text(
+              'Unduh Paket Offline',
+              style: ItqanTypography.heading2,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: ItqanSpacing.xs),
+            const Text(
+              'Unduh teks Al-Qur\'an & audio murattal agar dapat mengaji kapan saja tanpa koneksi internet.',
+              style: TextStyle(color: ItqanColors.silver, fontSize: 13, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: ItqanSpacing.lg),
+
+            // Feature Card
+            Container(
+              padding: const EdgeInsets.all(ItqanSpacing.md),
+              decoration: BoxDecoration(
+                color: ItqanColors.onyx,
+                borderRadius: BorderRadius.circular(ItqanRadius.lg),
+                border: Border.all(color: ItqanColors.charcoal),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: ItqanColors.correct, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Teks 114 Surah + Audio Juz \'Amma (~35MB)',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: ItqanColors.correct, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Qari: Syaikh Mishary Rashid Alafasy',
+                          style: TextStyle(color: ItqanColors.mist, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: ItqanSpacing.lg),
+
+            // Progress or Status
+            if (_isDownloading || _isCompleted || _statusText.isNotEmpty) ...[
+              Text(
+                _statusText,
+                style: TextStyle(
+                  color: _isCompleted ? ItqanColors.correct : ItqanColors.gold,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              LinearProgressIndicator(
+                value: _progress > 0 ? _progress : null,
+                color: _isCompleted ? ItqanColors.correct : ItqanColors.gold,
+                backgroundColor: ItqanColors.charcoal,
+              ),
+              const SizedBox(height: ItqanSpacing.md),
+            ],
+
+            // Action Buttons
+            if (_isCompleted)
+              _GoldButton(
+                label: 'Mulai Mengaji',
+                onPressed: widget.onFinish,
+              )
+            else if (_isDownloading)
+              OutlinedButton(
+                onPressed: widget.onFinish,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: ItqanColors.mist,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Lanjutkan di Latar Belakang'),
+              )
+            else ...[
+              _GoldButton(
+                label: 'Unduh Sekarang (~35MB)',
+                onPressed: _startDownload,
+              ),
+              const SizedBox(height: ItqanSpacing.sm),
+              TextButton(
+                onPressed: widget.onFinish,
+                child: const Text(
+                  'Unduh Nanti di Pengaturan',
+                  style: TextStyle(color: ItqanColors.mist, fontSize: 13),
+                ),
+              ),
+            ],
           ],
         ),
       ),

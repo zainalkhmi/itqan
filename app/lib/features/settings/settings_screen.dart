@@ -19,6 +19,7 @@ import '../localization/services/translation_service.dart';
 import '../voice_search/voice_search_screen.dart';
 import '../heatmap/heatmap_screen.dart';
 import '../scoring/services/inference_config_service.dart';
+import '../offline/offline_download_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -367,6 +368,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ref.read(inferenceConfigProvider.notifier).setMode(mode);
               },
               compact: true,
+            ),
+          ]),
+          _sectionTitle(s, 'Offline Storage & Downloads'),
+          _card([
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.download_for_offline_rounded, color: ItqanColors.gold),
+              title: const Text('Offline Audio & Quran Downloads', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text('Download Alafasy audio recitation & full Quran text', style: ItqanTypography.caption),
+              trailing: const Icon(Icons.chevron_right_rounded, color: ItqanColors.mist),
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const OfflineDownloadScreen(),
+                ));
+              },
             ),
           ]),
           _sectionTitle(s, context.l10n.settingsAbout),
