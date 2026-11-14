@@ -9,14 +9,17 @@ import '../../core/theme/spacing.dart';
 import '../../core/theme/typography.dart';
 import '../quran/models/ayah.dart';
 import '../quran/services/quran_service.dart';
+import '../quran/data/quran_catalog.dart';
 import '../home/home_screen.dart';
 import '../scoring/results_screen.dart';
+import '../scoring/widgets/mistakes_sheet.dart';
 import '../memorization/services/srs_service.dart';
 import 'recitation_controller.dart';
 import 'widgets/record_button.dart';
 import 'widgets/waveform_visualizer.dart';
 import 'widgets/word_token.dart';
 import 'widgets/live_tracking_unmasking_card.dart';
+import 'widgets/surah_ayah_picker_sheet.dart';
 
 enum HifzMode { off, liveUnmasking, blank, blur, firstLetter }
 
@@ -45,12 +48,19 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Timer? _peekTimer;
   final Set<int> _liveUnmaskedIndices = {};
   int _liveActiveWordIndex = 0;
+  late int _currentSurahNumber;
+  late String _currentSurahName;
+  bool _isLoadingSurah = false;
 
   @override
   void initState() {
     super.initState();
     _currentAyah = widget.ayah;
     _hifzMode = widget.initialHifzMode;
+    _currentSurahNumber = widget.ayah.surahNumber > 0 ? widget.ayah.surahNumber : 1;
+    final fallbackName = QuranCatalog.getSurah(_currentSurahNumber).nameSimple;
+    _currentSurahName = widget.surahName.isNotEmpty ? widget.surahName : fallbackName;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(recitationProvider.notifier).loadAyah(_currentAyah);
       _loadSurahAyahs();
@@ -80,7 +90,7 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     try {
       final service = QuranService();
       await service.init();
-      final ayahs = await service.getAyahs(_currentAyah.surahNumber);
+      final ayahs = await service.getAyahs(_currentSurahNumber);
       if (mounted && ayahs.isNotEmpty) {
         setState(() {
           _surahAyahs = ayahs;
@@ -89,26 +99,65 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     } catch (_) {}
   }
 
+  Future<void> _loadSurah(int surahNum, {int targetAyahNumber = 1}) async {
+    final surahObj = QuranCatalog.getSurah(surahNum);
+    setState(() {
+      _currentSurahNumber = surahNum;
+      _currentSurahName = surahObj.nameSimple;
+      _isLoadingSurah = true;
+      _liveUnmaskedIndices.clear();
+      _peekCount = 0;
+    });
+
+    try {
+      final service = QuranService();
+      await service.init();
+      final ayahs = await service.getAyahs(surahNum);
+      if (mounted && ayahs.isNotEmpty) {
+        setState(() {
+          _surahAyahs = ayahs;
+          _isLoadingSurah = false;
+        });
+        final target = ayahs.firstWhere(
+          (a) => a.ayahNumber == targetAyahNumber,
+          orElse: () => ayahs.first,
+        );
+        _goToAyah(target);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingSurah = false);
+    }
+  }
+
   void _goToAyah(Ayah newAyah) {
     setState(() {
       _currentAyah = newAyah;
+      _liveUnmaskedIndices.clear();
+      _peekCount = 0;
     });
     ref.read(recitationProvider.notifier).loadAyah(newAyah);
   }
 
-  void _nextAyah() {
+  void _nextAyah() async {
     if (_surahAyahs.isEmpty) return;
     final currentIndex = _surahAyahs.indexWhere((a) => a.ayahNumber == _currentAyah.ayahNumber);
     if (currentIndex != -1 && currentIndex + 1 < _surahAyahs.length) {
       _goToAyah(_surahAyahs[currentIndex + 1]);
+    } else if (_currentSurahNumber < 114) {
+      // Seamlessly advance to next Surah!
+      await _loadSurah(_currentSurahNumber + 1, targetAyahNumber: 1);
     }
   }
 
-  void _prevAyah() {
+  void _prevAyah() async {
     if (_surahAyahs.isEmpty) return;
     final currentIndex = _surahAyahs.indexWhere((a) => a.ayahNumber == _currentAyah.ayahNumber);
     if (currentIndex > 0) {
       _goToAyah(_surahAyahs[currentIndex - 1]);
+    } else if (_currentSurahNumber > 1) {
+      // Seamlessly transition to previous Surah (last Ayah)!
+      final prevCount = QuranCatalog.getAyahCount(_currentSurahNumber - 1);
+      await _loadSurah(_currentSurahNumber - 1, targetAyahNumber: prevCount);
     }
   }
 
@@ -155,7 +204,7 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             builder: (_) => ResultsScreen(
               result: adjustedResult,
               ayah: _currentAyah,
-              surahName: widget.surahName,
+              surahName: _currentSurahName,
               onRetry: () {
                 notifier.retry();
                 Navigator.pop(context);
@@ -185,16 +234,24 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
       }
     }
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : ItqanColors.lightTextPrimary;
+    final secondaryTextColor = isDark ? ItqanColors.mist : ItqanColors.lightTextSecondary;
+    final cardBg = isDark ? ItqanColors.onyx : Colors.white;
+    final cardBorder = isDark
+        ? (_isPeeking ? ItqanColors.gold : ItqanColors.goldGlow)
+        : (_isPeeking ? ItqanColors.gold : ItqanColors.lightBorder);
+
     final currentAyahIdx = _surahAyahs.indexWhere((a) => a.ayahNumber == _currentAyah.ayahNumber);
-    final hasPrev = _surahAyahs.isNotEmpty && currentAyahIdx > 0;
-    final hasNext = _surahAyahs.isNotEmpty && currentAyahIdx != -1 && currentAyahIdx + 1 < _surahAyahs.length;
+    final hasPrev = (_surahAyahs.isNotEmpty && currentAyahIdx > 0) || _currentSurahNumber > 1;
+    final hasNext = (_surahAyahs.isNotEmpty && currentAyahIdx != -1 && currentAyahIdx + 1 < _surahAyahs.length) || _currentSurahNumber < 114;
 
     return Scaffold(
-      backgroundColor: ItqanColors.void_,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: ItqanColors.void_,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
+          icon: Icon(Icons.arrow_back_rounded, color: textColor),
           onPressed: () {
             if (Navigator.canPop(context)) {
               Navigator.pop(context);
@@ -207,20 +264,52 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
           },
         ),
         centerTitle: true,
-        title: Text(
-          '${widget.surahName} • Ayah ${_currentAyah.ayahNumber}',
-          style: ItqanTypography.label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        title: InkWell(
+          onTap: () {
+            SurahAyahPickerSheet.show(
+              context,
+              currentSurahNumber: _currentSurahNumber,
+              currentAyahNumber: _currentAyah.ayahNumber,
+              onSelected: (sNum, aNum) {
+                _loadSurah(sNum, targetAyahNumber: aNum);
+              },
+            );
+          },
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '$_currentSurahName • Ayah ${_currentAyah.ayahNumber}',
+                    style: ItqanTypography.label.copyWith(
+                      color: textColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: isDark ? ItqanColors.gold : ItqanColors.goldDeep,
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, color: ItqanColors.gold),
+            icon: Icon(Icons.chevron_left_rounded, color: hasPrev ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
             tooltip: 'Previous Ayah',
             onPressed: hasPrev ? _prevAyah : null,
           ),
           IconButton(
-            icon: const Icon(Icons.chevron_right_rounded, color: ItqanColors.gold),
+            icon: Icon(Icons.chevron_right_rounded, color: hasNext ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
             tooltip: 'Next Ayah',
             onPressed: hasNext ? _nextAyah : null,
           ),
@@ -238,10 +327,19 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(ItqanSpacing.lg),
                   decoration: BoxDecoration(
-                    color: ItqanColors.onyx,
+                    color: cardBg,
                     borderRadius: BorderRadius.circular(ItqanRadius.xl),
+                    boxShadow: isDark
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                     border: Border.all(
-                      color: _isPeeking ? ItqanColors.gold : ItqanColors.goldGlow,
+                      color: cardBorder,
                       width: _isPeeking ? 2.0 : 1.5,
                     ),
                   ),
@@ -426,11 +524,13 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   }
 
   Widget _buildHifzModeSelector() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
       decoration: BoxDecoration(
-        color: ItqanColors.charcoal,
+        color: isDark ? ItqanColors.charcoal : const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(ItqanRadius.full),
+        border: Border.all(color: isDark ? Colors.transparent : ItqanColors.lightBorder),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -450,12 +550,15 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
 
   Widget _hifzChip(String label, HifzMode mode, IconData icon) {
     final isSelected = _hifzMode == mode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return GestureDetector(
       onTap: () => setState(() => _hifzMode = mode),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: isSelected ? ItqanColors.gold : Colors.transparent,
+          color: isSelected
+              ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(ItqanRadius.full),
         ),
         child: Row(
@@ -464,13 +567,13 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             Icon(
               icon,
               size: 13,
-              color: isSelected ? ItqanColors.void_ : ItqanColors.mist,
+              color: isSelected ? Colors.white : (isDark ? ItqanColors.mist : ItqanColors.lightTextSecondary),
             ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? ItqanColors.void_ : ItqanColors.mist,
+                color: isSelected ? Colors.white : (isDark ? ItqanColors.mist : ItqanColors.lightTextSecondary),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 fontSize: 11,
               ),
@@ -482,10 +585,13 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   }
 
   Widget _buildAyahTextDisplay() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final arabicTextColor = isDark ? ItqanColors.snow : ItqanColors.lightTextPrimary;
+
     if (_isPeeking || _hifzMode == HifzMode.off) {
       return Text(
         _currentAyah.textUthmani,
-        style: ItqanTypography.arabicLarge,
+        style: ItqanTypography.arabicLarge.copyWith(color: arabicTextColor),
         textAlign: TextAlign.center,
         textDirection: TextDirection.rtl,
       );
@@ -597,6 +703,11 @@ class _ControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final btnBg = isDark ? color.withOpacity(0.12) : const Color(0xFFF1F5F9);
+    final borderColor = isDark ? color.withOpacity(0.4) : ItqanColors.lightBorder;
+    final captionColor = isDark ? ItqanColors.mist : ItqanColors.lightTextSecondary;
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
@@ -605,9 +716,9 @@ class _ControlButton extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: btnBg,
               shape: BoxShape.circle,
-              border: Border.all(color: color.withOpacity(0.4)),
+              border: Border.all(color: borderColor),
             ),
             child: Icon(icon, color: color, size: 24),
           ),
@@ -616,7 +727,7 @@ class _ControlButton extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: 84),
             child: Text(
               label,
-              style: ItqanTypography.caption,
+              style: ItqanTypography.caption.copyWith(color: captionColor),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

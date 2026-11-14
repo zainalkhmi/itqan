@@ -127,13 +127,60 @@ class ScoringService {
     final rawScores = (data['wordScores'] as List? ?? []);
     final wordScores = rawScores.map((w) {
       final map = w as Map<String, dynamic>;
+      final scoreVal = (map['score'] as num?)?.toDouble() ?? 0.8;
+      final err = map['error'] as String?;
+      MistakeType mType = MistakeType.none;
+      if (scoreVal < 0.50) {
+        mType = MistakeType.missed;
+      } else if (scoreVal < 0.75) {
+        mType = MistakeType.incorrect;
+      } else if (err != null && err.isNotEmpty) {
+        mType = MistakeType.tajweed;
+      }
+
       return WordScore(
         word: map['word'] as String? ?? '',
-        score: (map['score'] as num?)?.toDouble() ?? 0.8,
-        error: map['error'] as String?,
+        score: scoreVal,
+        error: err,
         transcribedAs: map['transcribed_as'] as String?,
+        mistakeType: mType,
       );
     }).toList();
+
+    final rawMistakes = (data['mistakes'] as List? ?? []);
+    final mistakes = <RecitationMistake>[];
+
+    for (final rm in rawMistakes) {
+      final mMap = rm as Map<String, dynamic>;
+      final typeStr = mMap['type'] as String? ?? 'incorrect';
+      MistakeType mType = MistakeType.incorrect;
+      String mTitle = 'Incorrect words';
+
+      if (typeStr.contains('omission')) {
+        mType = MistakeType.missed;
+        mTitle = 'Missed words';
+      } else if (typeStr.contains('extra') || typeStr.contains('insertion')) {
+        mType = MistakeType.extra;
+        mTitle = 'Extra words';
+      } else if (typeStr.contains('waveform') || typeStr.contains('duration')) {
+        mType = MistakeType.tajweed;
+        mTitle = 'Tajweed timing deviation';
+      }
+
+      final expWord = mMap['expected'] as String? ?? '';
+      final actWord = mMap['transcribed'] as String? ?? '';
+
+      mistakes.add(RecitationMistake(
+        verseKey: '${ayah.surahNumber}:${ayah.ayahNumber}',
+        type: mType,
+        title: mTitle,
+        expectedText: ayah.textUthmani,
+        recitedText: actWord.isNotEmpty ? actWord : expWord,
+        highlightedWord: actWord.isNotEmpty ? actWord : expWord,
+        wordIndex: mMap['word_index'] as int? ?? 0,
+        detail: mMap['detail'] as String? ?? '',
+      ));
+    }
 
     return ScoreResult(
       overall: (data['overall'] as num?)?.toDouble() ?? 80.0,
@@ -142,6 +189,7 @@ class ScoringService {
       tajweed: (data['tajweed'] as num?)?.toDouble() ?? 85.0,
       fluency: (data['fluency'] as num?)?.toDouble() ?? 85.0,
       wordScores: wordScores,
+      mistakes: mistakes,
       surahNumber: ayah.surahNumber,
       ayahNumber: ayah.ayahNumber,
       transcription: data['transcription'] as String?,
@@ -197,9 +245,11 @@ class ScoringService {
       double wordScore = 0.90;
       String? wordError;
 
+      MistakeType mType = MistakeType.none;
       if (durationSec < 1.0) {
         wordScore = 0.20;
         wordError = paceAdvice ?? 'Incomplete pronunciation';
+        mType = MistakeType.missed;
       } else {
         if (detectedRule != null) {
           tajweedRuleCount++;
@@ -218,9 +268,11 @@ class ScoringService {
               wordScore = 0.72;
               final actualCount = (estimatedVowelMs / 220.0).toStringAsFixed(1);
               wordError = 'Madd waveform: measured ~${estimatedVowelMs}ms (~$actualCount harakat). Expected $minCounts-$maxCounts harakat (~${expectedMinMs}-${expectedMaxMs}ms).';
+              mType = MistakeType.tajweed;
             } else if (estimatedVowelMs > expectedMaxMs * 1.5) {
               wordScore = 0.85;
               wordError = 'Madd duration: slightly over-elongated (~${estimatedVowelMs}ms). Maintain standard $maxCounts harakat.';
+              mType = MistakeType.tajweed;
               tajweedPassedCount++;
             } else {
               tajweedPassedCount++;
@@ -231,6 +283,7 @@ class ScoringService {
             if (estimatedNasalMs < 300) {
               wordScore = 0.74;
               wordError = 'Ghunnah duration: held for ~${estimatedNasalMs}ms. Sustain nasal sound for 2 full counts (~400-500ms).';
+              mType = MistakeType.tajweed;
             } else {
               tajweedPassedCount++;
               wordScore = 0.95;
@@ -245,6 +298,7 @@ class ScoringService {
           if (durationSec < idealMinSec) {
             wordScore = 0.78;
             wordError = makhrajNote;
+            mType = MistakeType.incorrect;
           }
         }
       }
@@ -253,7 +307,31 @@ class ScoringService {
         word: text,
         score: wordScore,
         error: wordError,
+        mistakeType: mType,
       ));
+    }
+
+    final localMistakes = <RecitationMistake>[];
+    for (int i = 0; i < wordScores.length; i++) {
+      final ws = wordScores[i];
+      if (ws.isMistake) {
+        String title = 'Incorrect words';
+        if (ws.mistakeType == MistakeType.missed) {
+          title = 'Missed words';
+        } else if (ws.mistakeType == MistakeType.tajweed) {
+          title = 'Tajweed articulation';
+        }
+        localMistakes.add(RecitationMistake(
+          verseKey: '${ayah.surahNumber}:${ayah.ayahNumber}',
+          type: ws.mistakeType,
+          title: title,
+          expectedText: ayah.textUthmani,
+          recitedText: ws.transcribedAs ?? ws.word,
+          highlightedWord: ws.word,
+          wordIndex: i,
+          detail: ws.error ?? 'Word needs practice',
+        ));
+      }
     }
 
     final double wordAccuracy = (durationSec < 1.0)
@@ -286,6 +364,7 @@ class ScoringService {
       tajweed: double.parse(tajweedScore.toStringAsFixed(1)),
       fluency: double.parse(fluencyScore.toStringAsFixed(1)),
       wordScores: wordScores,
+      mistakes: localMistakes,
       surahNumber: ayah.surahNumber,
       ayahNumber: ayah.ayahNumber,
       aiModel: 'on_device_acoustic_engine',

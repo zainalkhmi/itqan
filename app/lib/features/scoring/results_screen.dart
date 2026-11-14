@@ -9,6 +9,7 @@ import 'models/score_result.dart';
 import '../../shared/widgets/score_ring.dart';
 import '../../shared/widgets/gold_button.dart';
 import 'widgets/word_detail_sheet.dart';
+import 'widgets/mistakes_sheet.dart';
 import '../tashih/services/tashih_service.dart';
 
 class ResultsScreen extends StatelessWidget {
@@ -29,13 +30,17 @@ class ResultsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : ItqanColors.lightTextPrimary;
+    final cardBg = isDark ? ItqanColors.onyx : Colors.white;
+    final borderColor = isDark ? ItqanColors.charcoal : ItqanColors.lightBorder;
     final mistakes = result.wordScores.where((w) => w.error != null).toList();
 
     return Scaffold(
-      backgroundColor: ItqanColors.void_,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: ItqanColors.void_,
-        title: Text(AppLocalizations.of(context)!.resultsTitle, style: ItqanTypography.heading2),
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
+        title: Text(AppLocalizations.of(context)!.resultsTitle, style: ItqanTypography.heading2.copyWith(color: textColor)),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -121,6 +126,53 @@ class ResultsScreen extends StatelessWidget {
               Text(result.grade, style: ItqanTypography.heading1.copyWith(color: result.color)),
               const SizedBox(height: ItqanSpacing.md),
               ScoreRing(score: result.overall, size: 180),
+              if (result.mistakes.isNotEmpty) ...[
+                const SizedBox(height: ItqanSpacing.lg),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: ItqanColors.mistakeIncorrect.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: ItqanColors.mistakeIncorrect.withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: ItqanColors.mistakeIncorrect, size: 26),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${result.mistakes.length} Mistakes Highlighted',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: ItqanColors.mistakeIncorrect, fontSize: 14),
+                            ),
+                            Text(
+                              'Compare Expected vs Recited with similar verses',
+                              style: TextStyle(fontSize: 11, color: isDark ? Colors.white70 : ItqanColors.lightTextSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ItqanColors.mistakeIncorrect,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () => MistakesSheet.show(
+                          context,
+                          mistakes: result.mistakes,
+                          onPracticeAyah: onRetry,
+                        ),
+                        child: const Text('Inspect', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (result.transcription != null && result.transcription!.isNotEmpty) ...[
                 const SizedBox(height: ItqanSpacing.lg),
                 const _SectionHeader(title: 'AI Speech Recognition'),
@@ -328,20 +380,17 @@ class _WordAnalysis extends StatelessWidget {
   final List<WordScore> wordScores;
   const _WordAnalysis({required this.wordScores});
 
-  Color _color(double score) {
-    if (score >= 0.85) return ItqanColors.correct;
-    if (score >= 0.65) return ItqanColors.warning;
-    return ItqanColors.error;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(ItqanSpacing.md),
       decoration: BoxDecoration(
-        color: ItqanColors.onyx,
+        color: isDark ? ItqanColors.onyx : Colors.white,
         borderRadius: BorderRadius.circular(ItqanRadius.lg),
+        border: Border.all(color: isDark ? Colors.transparent : ItqanColors.lightBorder),
       ),
       child: Wrap(
         textDirection: TextDirection.rtl,
@@ -349,22 +398,27 @@ class _WordAnalysis extends StatelessWidget {
         spacing: ItqanSpacing.sm,
         runSpacing: ItqanSpacing.sm,
         children: wordScores.map((ws) {
+          final wordColor = ws.statusColor;
           return Builder(
             builder: (ctx) => GestureDetector(
               onTap: () => showWordDetail(ctx, ws),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _color(ws.score).withOpacity(0.12),
+                  color: wordColor.withOpacity(ws.isMistake ? 0.20 : 0.12),
                   borderRadius: BorderRadius.circular(ItqanRadius.sm),
-                  border: Border.all(color: _color(ws.score).withOpacity(0.4)),
+                  border: Border.all(
+                    color: ws.isMistake ? wordColor : wordColor.withOpacity(0.4),
+                    width: ws.isMistake ? 1.5 : 1.0,
+                  ),
                 ),
                 child: Text(
                   ws.word,
                   style: TextStyle(
                     fontFamily: 'NotoNaskhArabic',
                     fontSize: 22,
-                    color: _color(ws.score),
+                    color: wordColor,
+                    fontWeight: ws.isMistake ? FontWeight.bold : FontWeight.normal,
                     height: 1.8,
                   ),
                   textDirection: TextDirection.rtl,

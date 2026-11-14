@@ -14,6 +14,7 @@ class Mushaf15LineView extends StatefulWidget {
   final Map<int, Surah> surahMap;
   final bool isHifzMode;
   final bool showTajweed;
+  final Set<String>? mistakeWordKeys;
   final Function(MushafWordItem word)? onWordTap;
   final Function(String verseKey)? onAyahSelected;
 
@@ -23,6 +24,7 @@ class Mushaf15LineView extends StatefulWidget {
     required this.surahMap,
     this.isHifzMode = false,
     this.showTajweed = true,
+    this.mistakeWordKeys,
     this.onWordTap,
     this.onAyahSelected,
   });
@@ -57,16 +59,20 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
   Widget build(BuildContext context) {
     final pageNum = widget.layout.pageNumber;
     final juzNum = widget.layout.juzNumber;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF161616),
+        color: isDark ? const Color(0xFF161616) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ItqanColors.gold.withValues(alpha: 0.7), width: 1.5),
+        border: Border.all(
+          color: isDark ? ItqanColors.gold.withValues(alpha: 0.7) : ItqanColors.gold.withValues(alpha: 0.8),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.4),
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.06),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -77,14 +83,17 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: ItqanColors.gold.withValues(alpha: 0.3), width: 0.8),
+          border: Border.all(
+            color: isDark ? ItqanColors.gold.withValues(alpha: 0.3) : ItqanColors.gold.withValues(alpha: 0.4),
+            width: 0.8,
+          ),
         ),
         child: Column(
           children: [
             // ── Top Page Header ──────────────────────────────────────────
             _buildPageHeader(juzNum, pageNum),
             const SizedBox(height: 6),
-            const Divider(color: ItqanColors.charcoal, height: 1),
+            Divider(color: isDark ? ItqanColors.charcoal : ItqanColors.lightBorder, height: 1),
             const SizedBox(height: 6),
 
             // ── 15 Fixed Lines ───────────────────────────────────────────
@@ -99,7 +108,7 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
             ),
 
             const SizedBox(height: 6),
-            const Divider(color: ItqanColors.charcoal, height: 1),
+            Divider(color: isDark ? ItqanColors.charcoal : ItqanColors.lightBorder, height: 1),
             const SizedBox(height: 4),
 
             // ── Bottom Page Footer ───────────────────────────────────────
@@ -273,11 +282,21 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
   Widget _buildWordWidget(MushafWordItem word) {
     final key = '${word.verseKey}:${word.position}';
     final isRevealed = !widget.isHifzMode || _revealedWordKeys.contains(key);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultWordColor = isDark ? ItqanColors.snow : ItqanColors.lightTextPrimary;
+
+    final isMistake = widget.mistakeWordKeys != null &&
+        (widget.mistakeWordKeys!.contains(word.verseKey) ||
+         widget.mistakeWordKeys!.contains(word.location) ||
+         widget.mistakeWordKeys!.contains(key));
+
     final tajweedTokens = widget.showTajweed && isRevealed
         ? TajweedService().detectOfflineTajweed(word.textUthmani)
         : <TajweedToken>[];
     final hasTajweed = tajweedTokens.isNotEmpty;
-    final primaryColor = hasTajweed ? tajweedTokens.first.rule.color : ItqanColors.snow;
+    final primaryColor = isMistake
+        ? ItqanColors.mistakeIncorrect
+        : (hasTajweed ? tajweedTokens.first.rule.color : defaultWordColor);
 
     return GestureDetector(
       onTap: () {
@@ -298,9 +317,12 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 1.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
-          color: widget.isHifzMode && !isRevealed
-              ? ItqanColors.charcoal.withValues(alpha: 0.5)
-              : Colors.transparent,
+          color: isMistake
+              ? ItqanColors.mistakeIncorrect.withOpacity(0.15)
+              : (widget.isHifzMode && !isRevealed
+                  ? (isDark ? ItqanColors.charcoal.withValues(alpha: 0.5) : const Color(0xFFF1F5F9))
+                  : Colors.transparent),
+          border: isMistake ? Border.all(color: ItqanColors.mistakeIncorrect.withOpacity(0.5), width: 1) : null,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -325,8 +347,8 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
                       fontFamily: 'NotoNaskhArabic',
                       fontSize: 18,
                       height: 1.4,
-                      color: hasTajweed ? primaryColor : ItqanColors.snow,
-                      fontWeight: hasTajweed ? FontWeight.w600 : FontWeight.normal,
+                      color: primaryColor,
+                      fontWeight: (hasTajweed || isMistake) ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                 if (word.isVerseEnd && (!widget.isHifzMode || isRevealed)) ...[
@@ -343,7 +365,7 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
                 ],
               ],
             ),
-            if (hasTajweed)
+            if (hasTajweed || isMistake)
               Container(
                 margin: const EdgeInsets.only(top: 1),
                 height: 2,

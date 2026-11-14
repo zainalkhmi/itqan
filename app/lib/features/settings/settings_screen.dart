@@ -50,9 +50,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final s = ref.watch(settingsProvider);
 
     return Scaffold(
-      backgroundColor: ItqanColors.void_,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: ItqanColors.void_,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         title: Text(AppLocalizations.of(context)!.settingsTitle, style: ItqanTypography.heading2),
       ),
       body: ListView(
@@ -194,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _DropdownRow(
               label: AppLocalizations.of(context)!.settingsTheme,
               value: s.theme,
-              options: const {'dark': 'Dark', 'light': 'Light (Soon)', 'system': 'System'},
+              options: const {'dark': 'Dark', 'light': 'Light (Tarteel)', 'system': 'System'},
               onChanged: (v) => _update(s.copyWith(theme: v)),
             ),
             const SizedBox(height: ItqanSpacing.sm),
@@ -400,14 +400,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     child: Text(title.toUpperCase(), style: ItqanTypography.label.copyWith(color: ItqanColors.mist, fontSize: 11)),
   );
 
-  Widget _card(List<Widget> children) => Container(
-    padding: const EdgeInsets.all(ItqanSpacing.md),
-    decoration: BoxDecoration(
-      color: ItqanColors.onyx,
-      borderRadius: BorderRadius.circular(ItqanRadius.lg),
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-  );
+  Widget _card(List<Widget> children) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(ItqanSpacing.md),
+      decoration: BoxDecoration(
+        color: isDark ? ItqanColors.onyx : ItqanColors.lightCard,
+        borderRadius: BorderRadius.circular(ItqanRadius.lg),
+        border: Border.all(
+          color: isDark ? Colors.transparent : ItqanColors.lightBorder,
+          width: 1,
+        ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+    );
+  }
 }
 
 class _SegmentedPicker extends StatelessWidget {

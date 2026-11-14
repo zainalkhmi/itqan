@@ -375,34 +375,40 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       orElse: () => 0,
     );
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final topBottomBg = isDark ? ItqanColors.obsidian : Colors.white;
+    final barBorderColor = isDark ? ItqanColors.charcoal : ItqanColors.lightBorder;
+    final primaryTextColor = isDark ? ItqanColors.cloud : ItqanColors.lightTextPrimary;
+    final secondaryTextColor = isDark ? ItqanColors.mist : ItqanColors.lightTextSecondary;
+
     return Scaffold(
-      backgroundColor: ItqanColors.void_,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
             // ── Top info bar ──────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: const BoxDecoration(
-                color: ItqanColors.obsidian,
-                border: Border(bottom: BorderSide(color: ItqanColors.charcoal)),
+              decoration: BoxDecoration(
+                color: topBottomBg,
+                border: Border(bottom: BorderSide(color: barBorderColor)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_ios_rounded, color: ItqanColors.mist, size: 16),
+                    icon: Icon(Icons.arrow_back_ios_rounded, color: secondaryTextColor, size: 16),
                     onPressed: () => Navigator.pop(context),
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
                   ),
                   juzNum > 0
                       ? Text(AppLocalizations.of(context)!.mushafJuz(juzNum),
-                          style: const TextStyle(color: ItqanColors.mist, fontSize: 11))
+                          style: TextStyle(color: secondaryTextColor, fontSize: 11))
                       : const SizedBox.shrink(),
                   Text(
                     surahName,
-                    style: const TextStyle(color: ItqanColors.cloud, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: primaryTextColor, fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -583,9 +589,9 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
             // ── Bottom nav bar ────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: const BoxDecoration(
-                color: ItqanColors.obsidian,
-                border: Border(top: BorderSide(color: ItqanColors.charcoal)),
+              decoration: BoxDecoration(
+                color: topBottomBg,
+                border: Border(top: BorderSide(color: barBorderColor)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

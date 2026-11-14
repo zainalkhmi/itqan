@@ -1,17 +1,88 @@
 import 'package:flutter/material.dart';
 
+enum MistakeType {
+  none,
+  incorrect, // Mispronounced or wrong word (Red)
+  missed,    // Skipped or omitted word (Orange)
+  extra,     // Inserted extra word not in ayah (Pink/Coral)
+  tajweed,   // Pronunciation/Makhraj/Madd issue (Amber)
+}
+
+class RecitationMistake {
+  final String verseKey;
+  final MistakeType type;
+  final String title;
+  final String expectedText;
+  final String recitedText;
+  final String highlightedWord;
+  final int wordIndex;
+  final String detail;
+  final List<String> similarVerses;
+
+  const RecitationMistake({
+    required this.verseKey,
+    required this.type,
+    required this.title,
+    required this.expectedText,
+    this.recitedText = '',
+    required this.highlightedWord,
+    this.wordIndex = 0,
+    this.detail = '',
+    this.similarVerses = const [],
+  });
+
+  Color get color {
+    switch (type) {
+      case MistakeType.incorrect:
+        return const Color(0xFFEF4444);
+      case MistakeType.missed:
+        return const Color(0xFFF97316);
+      case MistakeType.extra:
+        return const Color(0xFFEC4899);
+      case MistakeType.tajweed:
+        return const Color(0xFFFBBF24);
+      case MistakeType.none:
+        return const Color(0xFF10B981);
+    }
+  }
+}
+
 class WordScore {
   final String word;
   final double score; // 0-1
   final String? error;
   final String? transcribedAs;
+  final MistakeType mistakeType;
 
   const WordScore({
     required this.word,
     required this.score,
     this.error,
     this.transcribedAs,
+    this.mistakeType = MistakeType.none,
   });
+
+  bool get isMistake =>
+      mistakeType != MistakeType.none ||
+      (error != null && error!.isNotEmpty) ||
+      score < 0.70;
+
+  Color get statusColor {
+    switch (mistakeType) {
+      case MistakeType.incorrect:
+        return const Color(0xFFEF4444);
+      case MistakeType.missed:
+        return const Color(0xFFF97316);
+      case MistakeType.extra:
+        return const Color(0xFFEC4899);
+      case MistakeType.tajweed:
+        return const Color(0xFFFBBF24);
+      case MistakeType.none:
+        if (score >= 0.85) return const Color(0xFF10B981);
+        if (score >= 0.65) return const Color(0xFFFBBF24);
+        return const Color(0xFFEF4444);
+    }
+  }
 }
 
 class ScoreResult {
@@ -21,6 +92,7 @@ class ScoreResult {
   final double tajweed;
   final double fluency;
   final List<WordScore> wordScores;
+  final List<RecitationMistake> mistakes;
   final int surahNumber;
   final int ayahNumber;
   final String? transcription;
@@ -35,6 +107,7 @@ class ScoreResult {
     required this.tajweed,
     required this.fluency,
     required this.wordScores,
+    this.mistakes = const [],
     required this.surahNumber,
     required this.ayahNumber,
     this.transcription,
@@ -50,6 +123,7 @@ class ScoreResult {
     double? tajweed,
     double? fluency,
     List<WordScore>? wordScores,
+    List<RecitationMistake>? mistakes,
     int? surahNumber,
     int? ayahNumber,
     String? transcription,
@@ -64,6 +138,7 @@ class ScoreResult {
       tajweed: tajweed ?? this.tajweed,
       fluency: fluency ?? this.fluency,
       wordScores: wordScores ?? this.wordScores,
+      mistakes: mistakes ?? this.mistakes,
       surahNumber: surahNumber ?? this.surahNumber,
       ayahNumber: ayahNumber ?? this.ayahNumber,
       transcription: transcription ?? this.transcription,

@@ -20,6 +20,20 @@ final localeProvider = Provider<Locale>((ref) {
   return const Locale('en'); // English is DEFAULT
 });
 
+// Theme mode provider — driven by user settings (defaults to Dark, supports Light & System)
+final themeModeProvider = Provider<ThemeMode>((ref) {
+  final settings = ref.watch(settingsProvider);
+  switch (settings.theme.toLowerCase()) {
+    case 'light':
+      return ThemeMode.light;
+    case 'system':
+      return ThemeMode.system;
+    case 'dark':
+    default:
+      return ThemeMode.dark;
+  }
+});
+
 class ItqanApp extends ConsumerWidget {
   final bool showOnboarding;
   const ItqanApp({super.key, this.showOnboarding = false});
@@ -27,11 +41,14 @@ class ItqanApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
+    final themeMode = ref.watch(themeModeProvider);
 
     return MaterialApp(
       title: 'إتقان',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
 
       // Localization
       locale: locale,

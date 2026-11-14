@@ -10,6 +10,7 @@ import '../progress/progress_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/settings_service.dart';
 import '../quran/services/quran_service.dart';
+import '../quran/data/quran_catalog.dart';
 import '../recitation/recitation_screen.dart';
 import '../mushaf/mushaf_page_screen.dart';
 import '../mushaf/providers/reading_position_provider.dart';
@@ -119,8 +120,9 @@ class _RecordFAB extends ConsumerWidget {
           (a) => a.ayahNumber == prefs.lastAyah,
           orElse: () => ayahs.first,
         );
+        final surahObj = QuranCatalog.getSurah(prefs.lastSurah);
         Navigator.push(context, MaterialPageRoute(
-          builder: (_) => RecitationScreen(ayah: ayah, surahName: 'Surah ${prefs.lastSurah}'),
+          builder: (_) => RecitationScreen(ayah: ayah, surahName: surahObj.nameSimple),
         ));
       },
       child: Container(
@@ -181,8 +183,9 @@ class _HomeBody extends ConsumerWidget {
                       (a) => a.ayahNumber == prefs.lastAyah,
                       orElse: () => ayahs.first,
                     );
+                    final surahObj = QuranCatalog.getSurah(prefs.lastSurah);
                     Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => RecitationScreen(ayah: ayah, surahName: 'Al-Fatiha'),
+                      builder: (_) => RecitationScreen(ayah: ayah, surahName: surahObj.nameSimple),
                     ));
                   },
                 ),
