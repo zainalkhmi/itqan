@@ -1,6 +1,7 @@
 import '../models/mushaf_layout.dart';
 import '../../quran/services/quran_service.dart';
 import '../../quran/models/ayah.dart';
+import '../../tajweed/services/tajweed_service.dart';
 import '../mushaf_screen.dart';
 
 class MushafLayoutService {
@@ -39,9 +40,11 @@ class MushafLayoutService {
       for (int i = 0; i < verse.words.length; i++) {
         final pw = verse.words[i];
         final isLastWordInVerse = i == verse.words.length - 1;
+        final loc = '${verse.surahNumber}:${verse.ayahNumber}:${pw.position}';
+        final qpcData = TajweedService().getQpcV4Word(loc);
 
         allWords.add(MushafWordItem(
-          id: pw.id,
+          id: pw.id != 0 ? pw.id : (qpcData?.id ?? 0),
           position: pw.position,
           verseKey: verse.verseKey,
           surahNumber: verse.surahNumber,
@@ -51,6 +54,7 @@ class MushafLayoutService {
           translation: pw.translation,
           audioUrl: pw.audioUrl,
           isVerseEnd: pw.isVerseEnd || isLastWordInVerse,
+          qpcV4Glyph: qpcData?.glyph ?? '',
         ));
       }
     }

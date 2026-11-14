@@ -50,6 +50,7 @@ class VerseOnPage {
   final int surahNumber;
   final int ayahNumber;
   final String textUthmani;
+  final String textUthmaniTajweed;
   final int juzNumber;
   final bool isFirstOfSurah;
   final List<PageWord> words;
@@ -60,6 +61,7 @@ class VerseOnPage {
     required this.surahNumber,
     required this.ayahNumber,
     required this.textUthmani,
+    this.textUthmaniTajweed = '',
     required this.juzNumber,
     required this.isFirstOfSurah,
     required this.words,
@@ -152,7 +154,7 @@ class QuranService {
           'words': 'true',
           'translations': '131',
           'word_fields': 'text_uthmani,transliteration,translation,line_number,position,audio_url,char_type_name',
-          'fields': 'text_uthmani,verse_key,page_number,juz_number,hizb_number',
+          'fields': 'text_uthmani,text_uthmani_tajweed,verse_key,page_number,juz_number,hizb_number',
           'per_page': '50',
         },
       );
@@ -195,6 +197,7 @@ class QuranService {
         surahNumber: surahNum,
         ayahNumber: ayahNum,
         textUthmani: vMap['text_uthmani'] as String? ?? '',
+        textUthmaniTajweed: vMap['text_uthmani_tajweed'] as String? ?? vMap['text_uthmani'] as String? ?? '',
         juzNumber: juzNumber,
         isFirstOfSurah: prevSurah == null || surahNum != prevSurah,
         words: words,

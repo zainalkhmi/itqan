@@ -153,5 +153,63 @@ void main() {
       expect(find.text('kalimah3'), findsOneWidget);
       expect(find.text('Practice Ayah with AI'), findsOneWidget);
     });
+
+    testWidgets('Tajweed enabled shows rule info and QPC V4 details in word sheet', (tester) async {
+      final tajweedLines = <MushafLine>[
+        const MushafLine(
+          lineNumber: 1,
+          lineType: LineType.ayahText,
+          words: [
+            MushafWordItem(
+              id: 1,
+              position: 1,
+              verseKey: '1:1',
+              surahNumber: 1,
+              ayahNumber: 1,
+              textUthmani: 'بِسْمِ',
+              transliteration: 'bismi',
+              translation: 'In the name',
+              tajweedRule: 'ghunnah',
+              qpcV4Glyph: 'ﱁ',
+            ),
+          ],
+        ),
+      ];
+
+      final tajweedLayout = MushafPageLayout(
+        pageNumber: 1,
+        juzNumber: 1,
+        hizbNumber: 1,
+        edition: MushafEdition.madinah15Lines,
+        lines: tajweedLines,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 700,
+              width: 400,
+              child: Mushaf15LineView(
+                layout: tajweedLayout,
+                surahMap: surahMap,
+                isHifzMode: false,
+                showTajweed: true,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Tap word 'بِسْمِ'
+      await tester.tap(find.text('بِسْمِ'));
+      await tester.pumpAndSettle();
+
+      // Word sheet should contain Tajweed badge and QPC V4 script badge
+      expect(find.textContaining('QPC V4 Script'), findsOneWidget);
+      expect(find.textContaining('Ghunnah'), findsWidgets);
+    });
   });
 }

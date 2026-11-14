@@ -7,11 +7,13 @@ import '../services/mushaf_layout_service.dart';
 import '../../recitation/recitation_screen.dart';
 import '../../quran/services/quran_service.dart';
 import '../../quran/models/ayah.dart';
+import '../../tajweed/services/tajweed_service.dart';
 
 class Mushaf15LineView extends StatefulWidget {
   final MushafPageLayout layout;
   final Map<int, Surah> surahMap;
   final bool isHifzMode;
+  final bool showTajweed;
   final Function(MushafWordItem word)? onWordTap;
   final Function(String verseKey)? onAyahSelected;
 
@@ -20,6 +22,7 @@ class Mushaf15LineView extends StatefulWidget {
     required this.layout,
     required this.surahMap,
     this.isHifzMode = false,
+    this.showTajweed = true,
     this.onWordTap,
     this.onAyahSelected,
   });
@@ -270,6 +273,11 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
   Widget _buildWordWidget(MushafWordItem word) {
     final key = '${word.verseKey}:${word.position}';
     final isRevealed = !widget.isHifzMode || _revealedWordKeys.contains(key);
+    final tajweedTokens = widget.showTajweed && isRevealed
+        ? TajweedService().detectOfflineTajweed(word.textUthmani)
+        : <TajweedToken>[];
+    final hasTajweed = tajweedTokens.isNotEmpty;
+    final primaryColor = hasTajweed ? tajweedTokens.first.rule.color : ItqanColors.snow;
 
     return GestureDetector(
       onTap: () {
@@ -294,41 +302,57 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
               ? ItqanColors.charcoal.withValues(alpha: 0.5)
               : Colors.transparent,
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (widget.isHifzMode && !isRevealed)
-              Text(
-                '····',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: ItqanColors.gold.withValues(alpha: 0.4),
-                  letterSpacing: 2,
-                ),
-              )
-            else
-              Text(
-                word.textUthmani,
-                style: const TextStyle(
-                  fontFamily: 'NotoNaskhArabic',
-                  fontSize: 18,
-                  height: 1.4,
-                  color: ItqanColors.snow,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.isHifzMode && !isRevealed)
+                  Text(
+                    '····',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: ItqanColors.gold.withValues(alpha: 0.4),
+                      letterSpacing: 2,
+                    ),
+                  )
+                else
+                  Text(
+                    word.textUthmani,
+                    style: TextStyle(
+                      fontFamily: 'NotoNaskhArabic',
+                      fontSize: 18,
+                      height: 1.4,
+                      color: hasTajweed ? primaryColor : ItqanColors.snow,
+                      fontWeight: hasTajweed ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                if (word.isVerseEnd && (!widget.isHifzMode || isRevealed)) ...[
+                  const SizedBox(width: 2),
+                  Text(
+                    ' \u06DD${MushafLayoutService.toArabicNumerals(word.ayahNumber)} ',
+                    style: const TextStyle(
+                      fontFamily: 'NotoNaskhArabic',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: ItqanColors.gold,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (hasTajweed)
+              Container(
+                margin: const EdgeInsets.only(top: 1),
+                height: 2,
+                width: 14,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(1),
                 ),
               ),
-            if (word.isVerseEnd && (!widget.isHifzMode || isRevealed)) ...[
-              const SizedBox(width: 2),
-              Text(
-                ' \u06DD${MushafLayoutService.toArabicNumerals(word.ayahNumber)} ',
-                style: const TextStyle(
-                  fontFamily: 'NotoNaskhArabic',
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: ItqanColors.gold,
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -336,15 +360,34 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
   }
 
   void _showWordSheet(MushafWordItem word) {
+    final tajweedTokens = TajweedService().detectOfflineTajweed(word.textUthmani);
+    TajweedRuleDetails? directRule;
+    if (word.tajweedRule != null && word.tajweedRule!.isNotEmpty) {
+      directRule = TajweedService().getRuleDetails(word.tajweedRule!);
+    }
+    final hasTajweed = tajweedTokens.isNotEmpty || directRule != null;
+    final primaryColor = directRule?.color ?? (tajweedTokens.isNotEmpty ? tajweedTokens.first.rule.color : ItqanColors.goldLight);
+
+    final ruleList = <TajweedRuleDetails>[];
+    if (directRule != null) {
+      ruleList.add(directRule);
+    }
+    for (final token in tajweedTokens) {
+      if (!ruleList.any((r) => r.type == token.rule.type)) {
+        ruleList.add(token.rule);
+      }
+    }
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: ItqanColors.onyx,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -354,7 +397,7 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Ayah ${word.verseKey}',
+                      'Ayah ${word.verseKey} · Word ${word.position}',
                       style: const TextStyle(color: ItqanColors.gold, fontWeight: FontWeight.bold),
                     ),
                     IconButton(
@@ -363,19 +406,79 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+
+                // QPC V4 & QUL Script Info Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: ItqanColors.charcoal,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: ItqanColors.gold.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_stories_rounded, color: ItqanColors.gold, size: 14),
+                          const SizedBox(width: 6),
+                          Text(
+                            'QPC V4 Script: ${word.location}',
+                            style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      if (word.qpcV4Glyph.isNotEmpty)
+                        Text(
+                          'Glyph: ${word.qpcV4Glyph}',
+                          style: const TextStyle(color: ItqanColors.goldLight, fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Center(
                   child: Text(
                     word.textUthmani,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'NotoNaskhArabic',
                       fontSize: 34,
-                      color: ItqanColors.goldLight,
+                      color: primaryColor,
                       fontWeight: FontWeight.bold,
                     ),
                     textDirection: TextDirection.rtl,
                   ),
                 ),
+                if (hasTajweed) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    children: ruleList.map((r) {
+                      return Chip(
+                        backgroundColor: r.color.withValues(alpha: 0.2),
+                        side: BorderSide(color: r.color, width: 1),
+                        avatar: CircleAvatar(
+                          backgroundColor: r.color,
+                          radius: 5,
+                        ),
+                        label: Text(
+                          '${r.name} (${r.nameArabic})',
+                          style: TextStyle(color: r.color, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 4),
+                  Center(
+                    child: Text(
+                      ruleList.first.description,
+                      style: const TextStyle(color: ItqanColors.mist, fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
                 if (word.transliteration.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Center(

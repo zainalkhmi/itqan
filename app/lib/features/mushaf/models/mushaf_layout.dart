@@ -22,6 +22,8 @@ class MushafWordItem {
   final String translation;
   final String audioUrl;
   final bool isVerseEnd;
+  final String qpcV4Glyph;
+  final String tajweedRule;
 
   const MushafWordItem({
     this.id = 0,
@@ -34,7 +36,11 @@ class MushafWordItem {
     this.translation = '',
     this.audioUrl = '',
     this.isVerseEnd = false,
+    this.qpcV4Glyph = '',
+    this.tajweedRule = '',
   });
+
+  String get location => '$surahNumber:$ayahNumber:$position';
 
   String get fullAudioUrl {
     if (audioUrl.isEmpty) return '';
@@ -93,3 +99,4 @@ class MushafPageLayout {
 
   int get lineCount => lines.length;
 }
+

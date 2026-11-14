@@ -14,6 +14,7 @@ import 'services/reading_position_service.dart';
 import 'models/mushaf_layout.dart';
 import 'services/mushaf_layout_service.dart';
 import 'widgets/mushaf_15_line_view.dart';
+import '../tajweed/services/tajweed_service.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   bool _showTranslation = false;
   bool _is15LineView = true;
   bool _isHifzMode = false;
+  bool _showTajweed = true;
   MushafEdition _edition = MushafEdition.madinah15Lines;
 
   // Auto-save debounce
@@ -55,6 +57,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   @override
   void initState() {
     super.initState();
+    TajweedService().init();
     _currentPage = widget.startPage.clamp(1, 604);
     _pageController = PageController(initialPage: _currentPage - 1);
     _precache(_currentPage);
@@ -240,6 +243,112 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     );
   }
 
+  void _showTajweedLegend() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: ItqanColors.onyx,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.75,
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.palette_outlined, color: ItqanColors.gold, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Tajweed Rules Legend (QUL / QPC)',
+                          style: TextStyle(color: ItqanColors.snow, fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: ItqanColors.mist, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Color-coded Tajweed based on King Fahd Complex (QPC V4) standards.',
+                  style: TextStyle(color: ItqanColors.mist, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView(
+                    children: TajweedService.ruleDefinitions.values.map((rule) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              margin: const EdgeInsets.only(top: 3),
+                              decoration: BoxDecoration(
+                                color: rule.color,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        rule.name,
+                                        style: TextStyle(color: rule.color, fontWeight: FontWeight.bold, fontSize: 13),
+                                      ),
+                                      Text(
+                                        rule.nameArabic,
+                                        style: TextStyle(
+                                          fontFamily: 'NotoNaskhArabic',
+                                          color: rule.color,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                        textDirection: TextDirection.rtl,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    rule.description,
+                                    style: const TextStyle(color: ItqanColors.silver, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pageAsync = ref.watch(_pageDataProvider(_currentPage));
@@ -391,6 +500,45 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                         ),
                         const SizedBox(width: 4),
                       ],
+                      // Tajweed Colored Rules Toggle
+                      IconButton(
+                        icon: Icon(
+                          Icons.auto_awesome_rounded,
+                          color: _showTajweed ? ItqanColors.gold : ItqanColors.mist,
+                          size: 18,
+                        ),
+                        onPressed: () {
+                          setState(() => _showTajweed = !_showTajweed);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _showTajweed
+                                    ? 'Tajweed Rules Color Highlight Enabled'
+                                    : 'Tajweed Rules Highlight Disabled',
+                              ),
+                              duration: const Duration(seconds: 1),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        tooltip: _showTajweed ? 'Tajweed Colors Active' : 'Enable Tajweed Colors',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      const SizedBox(width: 4),
+                      // Tajweed Legend info button
+                      IconButton(
+                        icon: const Icon(
+                          Icons.palette_outlined,
+                          color: ItqanColors.mist,
+                          size: 18,
+                        ),
+                        onPressed: _showTajweedLegend,
+                        tooltip: 'Tajweed Color Rules Legend',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      const SizedBox(width: 4),
                       // Bookmark button
                       IconButton(
                         icon: Icon(
@@ -425,6 +573,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                     showTranslation: _showTranslation,
                     is15LineView: _is15LineView,
                     isHifzMode: _isHifzMode,
+                    showTajweed: _showTajweed,
                     edition: _edition,
                   );
                 },
@@ -516,6 +665,7 @@ class _MushafPage extends ConsumerWidget {
   final bool showTranslation;
   final bool is15LineView;
   final bool isHifzMode;
+  final bool showTajweed;
   final MushafEdition edition;
 
   const _MushafPage({
@@ -523,6 +673,7 @@ class _MushafPage extends ConsumerWidget {
     required this.showTranslation,
     this.is15LineView = true,
     this.isHifzMode = false,
+    this.showTajweed = true,
     this.edition = MushafEdition.madinah15Lines,
   });
 
@@ -565,6 +716,7 @@ class _MushafPage extends ConsumerWidget {
             layout: layout,
             surahMap: surahMap,
             isHifzMode: isHifzMode,
+            showTajweed: showTajweed,
           );
         }
 
@@ -591,6 +743,7 @@ class _MushafPage extends ConsumerWidget {
                 _VerseBlock(
                   verses: group.verses,
                   showTranslation: showTranslation,
+                  showTajweed: showTajweed,
                 ),
               ],
               const SizedBox(height: 8),
@@ -678,8 +831,13 @@ class _SurahBanner extends StatelessWidget {
 class _VerseBlock extends ConsumerWidget {
   final List<VerseOnPage> verses;
   final bool showTranslation;
+  final bool showTajweed;
 
-  const _VerseBlock({required this.verses, required this.showTranslation});
+  const _VerseBlock({
+    required this.verses,
+    required this.showTranslation,
+    this.showTajweed = true,
+  });
 
   String _toArabicNumerals(int n) {
     const digits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -694,15 +852,28 @@ class _VerseBlock extends ConsumerWidget {
     final spans = <InlineSpan>[];
 
     for (final verse in verses) {
-      spans.add(TextSpan(
-        text: verse.textUthmani,
-        style: const TextStyle(
-          fontFamily: 'NotoNaskhArabic',
-          fontSize: 24,
-          height: 2.2,
-          color: ItqanColors.snow,
-        ),
-      ));
+      if (showTajweed && verse.textUthmaniTajweed.isNotEmpty) {
+        final tajweedSpans = TajweedService().parseTajweedSpans(
+          verse.textUthmaniTajweed,
+          defaultStyle: const TextStyle(
+            fontFamily: 'NotoNaskhArabic',
+            fontSize: 24,
+            height: 2.2,
+            color: ItqanColors.snow,
+          ),
+        );
+        spans.addAll(tajweedSpans);
+      } else {
+        spans.add(TextSpan(
+          text: verse.textUthmani,
+          style: const TextStyle(
+            fontFamily: 'NotoNaskhArabic',
+            fontSize: 24,
+            height: 2.2,
+            color: ItqanColors.snow,
+          ),
+        ));
+      }
       spans.add(TextSpan(
         text: ' \u06DD${_toArabicNumerals(verse.ayahNumber)} ',
         style: const TextStyle(
