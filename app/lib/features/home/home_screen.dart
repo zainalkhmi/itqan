@@ -193,9 +193,9 @@ class _HomeBody extends ConsumerWidget {
                   crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: ItqanSpacing.md,
-                  mainAxisSpacing: ItqanSpacing.md,
-                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.25,
                   children: [
                     _ActionCard(
                       icon: Icons.menu_book_rounded,
@@ -234,9 +234,9 @@ class _HomeBody extends ConsumerWidget {
                   crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: ItqanSpacing.md,
-                  mainAxisSpacing: ItqanSpacing.md,
-                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.25,
                   children: [
                     _ActionCard(
                       icon: Icons.school_rounded,
@@ -267,9 +267,9 @@ class _HomeBody extends ConsumerWidget {
                   crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: ItqanSpacing.md,
-                  mainAxisSpacing: ItqanSpacing.md,
-                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.25,
                   children: [
                     _ActionCard(
                       icon: Icons.psychology_rounded,
@@ -293,8 +293,8 @@ class _HomeBody extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: ItqanSpacing.md),
-                _ActionCard(
+                const SizedBox(height: 12),
+                _WideActionCard(
                   icon: Icons.cloud_sync_rounded,
                   label: 'Cloud Sync & Backup',
                   subtitle: 'Supabase & Firebase Sync',
@@ -311,9 +311,9 @@ class _HomeBody extends ConsumerWidget {
                   crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: ItqanSpacing.md,
-                  mainAxisSpacing: ItqanSpacing.md,
-                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.25,
                   children: [
                     _ActionCard(
                       icon: Icons.record_voice_over_rounded,
@@ -374,9 +374,9 @@ class _HomeBody extends ConsumerWidget {
                   crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: ItqanSpacing.md,
-                  mainAxisSpacing: ItqanSpacing.md,
-                  childAspectRatio: 1.4,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.25,
                   children: [
                     _ActionCard(
                       icon: Icons.graphic_eq_rounded,
@@ -506,8 +506,15 @@ class _MushafResumeCard extends StatelessWidget {
             children: [
               const Icon(Icons.auto_stories_rounded, color: ItqanColors.gold, size: 20),
               const SizedBox(width: 8),
-              Text(l10n.homeContinueReading, style: ItqanTypography.label),
-              const Spacer(),
+              Expanded(
+                child: Text(
+                  l10n.homeContinueReading,
+                  style: ItqanTypography.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
               Text(
                 localizedRelativeTimestamp(context, position.savedAt),
                 style: const TextStyle(color: ItqanColors.slate, fontSize: 11),
@@ -529,6 +536,8 @@ class _MushafResumeCard extends StatelessWidget {
           Text(
             '${position.surahNameSimple} · Ayah ${position.ayahNumber} · Page ${position.pageNumber}',
             style: const TextStyle(color: ItqanColors.mist, fontSize: 13),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: ItqanSpacing.md),
           Row(
@@ -551,6 +560,8 @@ class _MushafResumeCard extends StatelessWidget {
                   child: Text(
                     l10n.homeContinueBtn,
                     style: const TextStyle(color: ItqanColors.void_, fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
@@ -573,6 +584,8 @@ class _MushafResumeCard extends StatelessWidget {
                   child: Text(
                     l10n.homeStartFromBeginning,
                     style: const TextStyle(color: ItqanColors.mist, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
@@ -638,27 +651,113 @@ class _ActionCard extends StatelessWidget {
   final String subtitle;
   final VoidCallback onTap;
 
-  const _ActionCard({required this.icon, required this.label, required this.subtitle, required this.onTap});
+  const _ActionCard({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(ItqanSpacing.md),
-        decoration: BoxDecoration(color: ItqanColors.onyx, borderRadius: BorderRadius.circular(ItqanRadius.lg)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: ItqanColors.onyx,
+          borderRadius: BorderRadius.circular(ItqanRadius.lg),
+          border: Border.all(color: ItqanColors.charcoal, width: 0.8),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Icon(icon, color: ItqanColors.gold, size: 24),
+            Icon(icon, color: ItqanColors.gold, size: 22),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: ItqanTypography.label),
-                Text(subtitle, style: ItqanTypography.caption),
+                Text(
+                  label,
+                  style: ItqanTypography.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: ItqanTypography.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WideActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _WideActionCard({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: ItqanColors.onyx,
+          borderRadius: BorderRadius.circular(ItqanRadius.lg),
+          border: Border.all(color: ItqanColors.charcoal, width: 0.8),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: ItqanColors.charcoal,
+                borderRadius: BorderRadius.circular(ItqanRadius.md),
+              ),
+              child: Icon(icon, color: ItqanColors.gold, size: 22),
+            ),
+            const SizedBox(width: ItqanSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: ItqanTypography.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: ItqanTypography.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: ItqanColors.mist, size: 14),
           ],
         ),
       ),
