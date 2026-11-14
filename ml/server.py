@@ -319,6 +319,4 @@ async def recitation_stream_ws(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    # Force initial load
-    load_asr_model()
     uvicorn.run(app, host="127.0.0.1", port=8000)

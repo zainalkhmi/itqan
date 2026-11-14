@@ -206,11 +206,12 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             }
           },
         ),
-        title: Column(
-          children: [
-            Text(widget.surahName, style: ItqanTypography.label),
-            Text('Ayah ${_currentAyah.ayahNumber}', style: ItqanTypography.caption),
-          ],
+        centerTitle: true,
+        title: Text(
+          '${widget.surahName} • Ayah ${_currentAyah.ayahNumber}',
+          style: ItqanTypography.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
@@ -218,26 +219,12 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             tooltip: 'Previous Ayah',
             onPressed: hasPrev ? _prevAyah : null,
           ),
-          Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: ItqanColors.goldShimmer,
-                borderRadius: BorderRadius.circular(ItqanRadius.full),
-                border: Border.all(color: ItqanColors.goldGlow),
-              ),
-              child: Text(
-                '${_currentAyah.ayahNumber}${_surahAyahs.isNotEmpty ? "/${_surahAyahs.length}" : ""}',
-                style: const TextStyle(color: ItqanColors.gold, fontWeight: FontWeight.w700),
-              ),
-            ),
-          ),
           IconButton(
             icon: const Icon(Icons.chevron_right_rounded, color: ItqanColors.gold),
             tooltip: 'Next Ayah',
             onPressed: hasNext ? _nextAyah : null,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -625,7 +612,16 @@ class _ControlButton extends StatelessWidget {
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(height: 6),
-          Text(label, style: ItqanTypography.caption),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 84),
+            child: Text(
+              label,
+              style: ItqanTypography.caption,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );

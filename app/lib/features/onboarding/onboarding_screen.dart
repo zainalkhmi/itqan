@@ -110,37 +110,44 @@ class _WelcomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Islamic pattern placeholder
-        CustomPaint(size: const Size(160, 160), painter: _IslamicPatternPainter()),
-        const SizedBox(height: ItqanSpacing.xl),
-        const Text(
-          'إتقان',
-          style: TextStyle(fontFamily: 'Amiri', fontSize: 64, color: ItqanColors.gold, height: 1.4),
-          textDirection: TextDirection.rtl,
-        ),
-        const Text('Itqan', style: TextStyle(fontFamily: 'Inter', fontSize: 24, color: ItqanColors.mist)),
-        const SizedBox(height: ItqanSpacing.sm),
-        Builder(builder: (ctx) => Text(
-          AppLocalizations.of(ctx)?.onboardingWelcomeSubtitle ?? 'Master Quran recitation with AI-powered feedback',
-          style: const TextStyle(fontSize: 16, color: ItqanColors.silver),
-        )),
-        const SizedBox(height: ItqanSpacing.xxl),
-        GestureDetector(
-          onTap: onNext,
-          child: Container(
-            width: 56, height: 56,
-            decoration: BoxDecoration(
-              color: ItqanColors.goldShimmer,
-              shape: BoxShape.circle,
-              border: Border.all(color: ItqanColors.gold),
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: ItqanSpacing.lg, vertical: ItqanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Islamic pattern placeholder
+            CustomPaint(size: const Size(160, 160), painter: _IslamicPatternPainter()),
+            const SizedBox(height: ItqanSpacing.xl),
+            const Text(
+              'إتقان',
+              style: TextStyle(fontFamily: 'Amiri', fontSize: 64, color: ItqanColors.gold, height: 1.4),
+              textDirection: TextDirection.rtl,
             ),
-            child: const Icon(Icons.arrow_forward_rounded, color: ItqanColors.gold),
-          ),
+            const Text('Itqan', style: TextStyle(fontFamily: 'Inter', fontSize: 24, color: ItqanColors.mist)),
+            const SizedBox(height: ItqanSpacing.sm),
+            Builder(builder: (ctx) => Text(
+              AppLocalizations.of(ctx)?.onboardingWelcomeSubtitle ?? 'Master Quran recitation with AI-powered feedback',
+              style: const TextStyle(fontSize: 16, color: ItqanColors.silver),
+              textAlign: TextAlign.center,
+            )),
+            const SizedBox(height: ItqanSpacing.xxl),
+            GestureDetector(
+              onTap: onNext,
+              child: Container(
+                width: 56, height: 56,
+                decoration: BoxDecoration(
+                  color: ItqanColors.goldShimmer,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: ItqanColors.gold),
+                ),
+                child: const Icon(Icons.arrow_forward_rounded, color: ItqanColors.gold),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -160,49 +167,52 @@ class _LevelPage extends StatelessWidget {
       {'key': 'advanced', 'emoji': '🎓', 'title': l10n?.settingsLevelAdvanced ?? 'Advanced', 'sub': l10n?.onboardingLevelAdvanced ?? 'Fluent reader'},
     ];
 
-    return Padding(
-      padding: const EdgeInsets.all(ItqanSpacing.lg),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Builder(builder: (ctx) => Text(AppLocalizations.of(ctx)?.onboardingLevelTitle ?? 'Select Your Level', style: ItqanTypography.heading2, textAlign: TextAlign.center)),
-          const SizedBox(height: ItqanSpacing.xl),
-          ...levels.map((l) {
-            final active = selected == l['key'];
-            return GestureDetector(
-              onTap: () => onSelect(l['key']!),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.only(bottom: ItqanSpacing.md),
-                padding: const EdgeInsets.all(ItqanSpacing.md),
-                decoration: BoxDecoration(
-                  color: active ? ItqanColors.goldShimmer : ItqanColors.onyx,
-                  borderRadius: BorderRadius.circular(ItqanRadius.lg),
-                  border: Border.all(color: active ? ItqanColors.gold : ItqanColors.charcoal),
-                  boxShadow: active ? [BoxShadow(color: ItqanColors.goldGlow, blurRadius: 12)] : null,
-                ),
-                child: Row(
-                  children: [
-                    Text(l['emoji']!, style: const TextStyle(fontSize: 28)),
-                    const SizedBox(width: ItqanSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(l['title']!, style: ItqanTypography.label.copyWith(color: active ? ItqanColors.gold : ItqanColors.snow)),
-                          Text(l['sub']!, style: ItqanTypography.caption),
-                        ],
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: ItqanSpacing.lg, vertical: ItqanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Builder(builder: (ctx) => Text(AppLocalizations.of(ctx)?.onboardingLevelTitle ?? 'Select Your Level', style: ItqanTypography.heading2, textAlign: TextAlign.center)),
+            const SizedBox(height: ItqanSpacing.xl),
+            ...levels.map((l) {
+              final active = selected == l['key'];
+              return GestureDetector(
+                onTap: () => onSelect(l['key']!),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin: const EdgeInsets.only(bottom: ItqanSpacing.md),
+                  padding: const EdgeInsets.all(ItqanSpacing.md),
+                  decoration: BoxDecoration(
+                    color: active ? ItqanColors.goldShimmer : ItqanColors.onyx,
+                    borderRadius: BorderRadius.circular(ItqanRadius.lg),
+                    border: Border.all(color: active ? ItqanColors.gold : ItqanColors.charcoal),
+                    boxShadow: active ? [BoxShadow(color: ItqanColors.goldGlow, blurRadius: 12)] : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(l['emoji']!, style: const TextStyle(fontSize: 28)),
+                      const SizedBox(width: ItqanSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(l['title']!, style: ItqanTypography.label.copyWith(color: active ? ItqanColors.gold : ItqanColors.snow)),
+                            Text(l['sub']!, style: ItqanTypography.caption),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
-          const SizedBox(height: ItqanSpacing.xl),
-          Builder(builder: (ctx) => _GoldButton(label: AppLocalizations.of(ctx)?.onboardingContinue ?? 'Continue', onPressed: onNext)),
-        ],
+              );
+            }),
+            const SizedBox(height: ItqanSpacing.xl),
+            Builder(builder: (ctx) => _GoldButton(label: AppLocalizations.of(ctx)?.onboardingContinue ?? 'Continue', onPressed: onNext)),
+          ],
+        ),
       ),
     );
   }
@@ -216,40 +226,44 @@ class _GoalPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(ItqanSpacing.lg),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Builder(builder: (ctx) => Text(AppLocalizations.of(ctx)?.onboardingGoalTitle ?? 'Daily Goal', style: ItqanTypography.heading2, textAlign: TextAlign.center)),
-          const SizedBox(height: ItqanSpacing.xl),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [10, 20, 30].map((min) {
-              final active = selected == min;
-              return GestureDetector(
-                onTap: () => onSelect(min),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: active ? ItqanColors.goldShimmer : ItqanColors.onyx,
-                    borderRadius: BorderRadius.circular(ItqanRadius.full),
-                    border: Border.all(color: active ? ItqanColors.gold : ItqanColors.charcoal),
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: ItqanSpacing.lg, vertical: ItqanSpacing.xl),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Builder(builder: (ctx) => Text(AppLocalizations.of(ctx)?.onboardingGoalTitle ?? 'Daily Goal', style: ItqanTypography.heading2, textAlign: TextAlign.center)),
+            const SizedBox(height: ItqanSpacing.xl),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12,
+              runSpacing: 12,
+              children: [10, 20, 30].map((min) {
+                final active = selected == min;
+                return GestureDetector(
+                  onTap: () => onSelect(min),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: active ? ItqanColors.goldShimmer : ItqanColors.onyx,
+                      borderRadius: BorderRadius.circular(ItqanRadius.full),
+                      border: Border.all(color: active ? ItqanColors.gold : ItqanColors.charcoal),
+                    ),
+                    child: Text(
+                      '$min min',
+                      style: TextStyle(color: active ? ItqanColors.gold : ItqanColors.mist, fontWeight: FontWeight.w600),
+                    ),
                   ),
-                  child: Text(
-                    '$min min',
-                    style: TextStyle(color: active ? ItqanColors.gold : ItqanColors.mist, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: ItqanSpacing.xxl),
-          Builder(builder: (ctx) => _GoldButton(label: AppLocalizations.of(ctx)?.onboardingStartBtn ?? 'Get Started', onPressed: onFinish)),
-        ],
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: ItqanSpacing.xxl),
+            Builder(builder: (ctx) => _GoldButton(label: AppLocalizations.of(ctx)?.onboardingStartBtn ?? 'Get Started', onPressed: onFinish)),
+          ],
+        ),
       ),
     );
   }
