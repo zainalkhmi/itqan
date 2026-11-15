@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:itqan/l10n/app_localizations.dart';
-import '../../core/extensions/context_extensions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/spacing.dart';
@@ -12,7 +11,6 @@ import '../quran/services/quran_service.dart';
 import '../quran/data/quran_catalog.dart';
 import '../home/home_screen.dart';
 import '../scoring/results_screen.dart';
-import '../scoring/widgets/mistakes_sheet.dart';
 import '../memorization/services/srs_service.dart';
 import 'recitation_controller.dart';
 import 'widgets/record_button.dart';
@@ -532,7 +530,6 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Widget _buildAiEnginePill() {
     final mode = ref.watch(inferenceConfigProvider);
     final settings = ref.watch(settingsProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final (label, icon, color) = switch (mode) {
       InferenceMode.tajweedFormer => ('TajweedFormer V4', Icons.psychology_rounded, ItqanColors.correct),
