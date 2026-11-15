@@ -18,6 +18,8 @@ import 'services/reading_position_service.dart';
 import 'models/mushaf_layout.dart';
 import 'services/mushaf_layout_service.dart';
 import 'widgets/mushaf_15_line_view.dart';
+import 'widgets/mushaf_tarteel_view.dart';
+import '../recitation/widgets/surah_ayah_picker_sheet.dart';
 import '../tajweed/services/tajweed_service.dart';
 import '../scoring/models/score_result.dart';
 import '../scoring/scoring_service.dart';
@@ -51,7 +53,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   late PageController _pageController;
   late int _currentPage;
   bool _showTranslation = false;
-  bool _is15LineView = true;
+  bool _is15LineView = false; // Default to Tarteel Modern Mushaf Mode (Image 1 style)
+  double _mushafFontSize = 26.0;
   bool _isHifzMode = false;
   bool _showTajweed = true;
   MushafEdition _edition = MushafEdition.madinah15Lines;
@@ -67,6 +70,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   bool _isLiveReciting = false;
   int _recitingSeconds = 0;
   Timer? _recitingTimer;
+  StreamSubscription<Amplitude>? _amplitudeSubscription;
   AudioRecorder? _liveRecorder;
   String? _liveAudioPath;
   List<RecitationMistake> _liveMistakes = [];
@@ -74,6 +78,10 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   final Set<String> _correctWordKeys = {};
   String? _activeVerseKey;
   String? _activeWordKey;
+  int _activeWordIndex = 0;
+  int _accumulatedVoiceMs = 0;
+  int _silenceMs = 0;
+  bool _isSpeaking = false;
 
   @override
   void initState() {
@@ -89,6 +97,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   void dispose() {
     _saveDebounce?.cancel();
     _recitingTimer?.cancel();
+    _amplitudeSubscription?.cancel();
     _liveRecorder?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -98,6 +107,228 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
     final seconds = (totalSeconds % 60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
+  }
+
+  void _openSurahAyahPicker(int surahNum, int ayahNum) {
+    SurahAyahPickerSheet.show(
+      context,
+      currentSurahNumber: surahNum,
+      currentAyahNumber: ayahNum,
+      onSelected: (s, a) {
+        _jumpToSurahAyah(s, a);
+      },
+    );
+  }
+
+  void _jumpToSurahAyah(int surahNum, int ayahNum) {
+    const surahFirstPage = <int, int>{
+      1: 1, 2: 2, 3: 50, 4: 77, 5: 106, 6: 128, 7: 151, 8: 177, 9: 187,
+      10: 208, 11: 221, 12: 235, 13: 249, 14: 255, 15: 262, 16: 267, 17: 282,
+      18: 293, 19: 305, 20: 312, 21: 322, 22: 333, 23: 342, 24: 350, 25: 359,
+      26: 367, 27: 377, 28: 385, 29: 396, 30: 404, 31: 411, 32: 415, 33: 418,
+      34: 428, 35: 434, 36: 440, 37: 446, 38: 453, 39: 458, 40: 467, 41: 477,
+      42: 483, 43: 489, 44: 496, 45: 499, 46: 502, 47: 507, 48: 511, 49: 515,
+      50: 518, 51: 520, 52: 523, 53: 526, 54: 528, 55: 531, 56: 534, 57: 537,
+      58: 542, 59: 545, 60: 549, 61: 551, 62: 553, 63: 554, 64: 556, 65: 558,
+      66: 560, 67: 562, 68: 564, 69: 566, 70: 568, 71: 570, 72: 572, 73: 574,
+      74: 575, 75: 577, 76: 578, 77: 580, 78: 582, 79: 583, 80: 585, 81: 586,
+      82: 587, 83: 587, 84: 589, 85: 590, 86: 591, 87: 591, 88: 592, 89: 593,
+      90: 594, 91: 595, 92: 595, 93: 596, 94: 596, 95: 597, 96: 597, 97: 598,
+      98: 598, 99: 599, 100: 599, 101: 600, 102: 600, 103: 601, 104: 601,
+      105: 601, 106: 602, 107: 602, 108: 602, 109: 603, 110: 603, 111: 603,
+      112: 604, 113: 604, 114: 604,
+    };
+    final page = surahFirstPage[surahNum] ?? 1;
+    _jumpToPage(page);
+  }
+
+  void _showDisplaySettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? ItqanColors.onyx
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            final isDark = Theme.of(ctx).brightness == Brightness.dark;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Mushaf Display Settings',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // View Mode Switcher
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: isDark ? ItqanColors.charcoal : const Color(0xFFF3F4F6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() => _is15LineView = false);
+                                setSheetState(() {});
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: !_is15LineView
+                                      ? const Color(0xFF10B981)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'Tarteel Mushaf Mode',
+                                    style: TextStyle(
+                                      color: !_is15LineView ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() => _is15LineView = true);
+                                setSheetState(() {});
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _is15LineView
+                                      ? (isDark ? ItqanColors.gold : const Color(0xFFD97706))
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '15-Line Madinah Mode',
+                                    style: TextStyle(
+                                      color: _is15LineView ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Font Size Slider
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Arabic Font Size',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white70 : Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          '${_mushafFontSize.toInt()} sp',
+                          style: const TextStyle(
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Slider(
+                      value: _mushafFontSize,
+                      min: 20.0,
+                      max: 36.0,
+                      divisions: 8,
+                      activeColor: const Color(0xFF10B981),
+                      onChanged: (val) {
+                        setState(() => _mushafFontSize = val);
+                        setSheetState(() {});
+                      },
+                    ),
+
+                    // Tajweed Switch
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Tajweed Rules Color Highlight',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                      activeColor: const Color(0xFF10B981),
+                      value: _showTajweed,
+                      onChanged: (val) {
+                        setState(() => _showTajweed = val);
+                        setSheetState(() {});
+                      },
+                    ),
+
+                    // Hifz Mode Switch
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Hifz Mode (Hide Words / Tap to Peek)',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                      activeColor: const Color(0xFF10B981),
+                      value: _isHifzMode,
+                      onChanged: (val) {
+                        setState(() => _isHifzMode = val);
+                        setSheetState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _startLiveReciting() async {
@@ -135,6 +366,12 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
           RecordConfig(encoder: encoder, sampleRate: 16000, numChannels: 1),
           path: recordingPath ?? '',
         );
+
+        // Real microphone amplitude stream for Voice Activity Detection (VAD)
+        _amplitudeSubscription?.cancel();
+        _amplitudeSubscription = _liveRecorder!
+            .onAmplitudeChanged(const Duration(milliseconds: 50))
+            .listen(_processLiveAudioAmplitude);
       } catch (e) {
         debugPrint('[LiveRecitation] Recorder start exception: $e');
       }
@@ -146,6 +383,10 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       _recitingSeconds = 0;
       _activeVerseKey = null;
       _activeWordKey = null;
+      _activeWordIndex = 0;
+      _accumulatedVoiceMs = 0;
+      _silenceMs = 0;
+      _isSpeaking = false;
       _liveMistakes = [];
       _mistakeWordKeys.clear();
       _correctWordKeys.clear();
@@ -160,13 +401,76 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       setState(() {
         _recitingSeconds++;
       });
-      _processLiveRecitationProgress();
+      if (isTest) {
+        _processLiveRecitationProgress();
+      }
     });
+  }
+
+  int _estimateWordAcousticDurationMs(String wordText) {
+    final clean = wordText.replaceAll(RegExp(r'[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]'), '');
+    final charCount = clean.length.clamp(2, 12);
+    return (charCount * 120).clamp(350, 1600);
+  }
+
+  void _processLiveAudioAmplitude(Amplitude amp) {
+    if (!mounted || !_isLiveReciting) return;
+
+    final pageAsync = ref.read(_pageDataProvider(_currentPage));
+    final pageData = pageAsync.valueOrNull;
+    if (pageData == null || pageData.verses.isEmpty) return;
+
+    final allWords = <PageWord>[];
+    for (final v in pageData.verses) {
+      allWords.addAll(v.words.where((w) => !w.isVerseEnd));
+    }
+    if (allWords.isEmpty) return;
+
+    if (_activeWordIndex >= allWords.length) return;
+
+    // Threshold: -40.0 dBFS separates ambient background noise from active recitation
+    final isVoice = amp.current > -40.0;
+
+    if (isVoice) {
+      _silenceMs = 0;
+      _isSpeaking = true;
+      _accumulatedVoiceMs += 50;
+
+      final currentWord = allWords[_activeWordIndex];
+      final targetDuration = _estimateWordAcousticDurationMs(currentWord.textUthmani);
+
+      if (_accumulatedVoiceMs >= targetDuration) {
+        final wordKey = '${currentWord.verseKey}:${currentWord.position}';
+        setState(() {
+          _correctWordKeys.add(wordKey);
+          _activeWordIndex++;
+          if (_activeWordIndex < allWords.length) {
+            final nextWord = allWords[_activeWordIndex];
+            _activeVerseKey = nextWord.verseKey;
+            _activeWordKey = '${nextWord.verseKey}:${nextWord.position}';
+          }
+        });
+        _accumulatedVoiceMs = 0;
+      } else {
+        final currentKey = '${currentWord.verseKey}:${currentWord.position}';
+        if (_activeWordKey != currentKey) {
+          setState(() {
+            _activeVerseKey = currentWord.verseKey;
+            _activeWordKey = currentKey;
+          });
+        }
+      }
+    } else {
+      _isSpeaking = false;
+      _silenceMs += 50;
+      // Silence detected: do NOT advance word pointer! Keep frozen waiting for speech.
+    }
   }
 
   Future<void> _stopLiveReciting() async {
     final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
     _recitingTimer?.cancel();
+    _amplitudeSubscription?.cancel();
     String? finalPath;
     if (!isTest) {
       try {
@@ -201,7 +505,6 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     }
     if (allWords.isEmpty) return;
 
-    // Track active word with high precision kata-per-kata
     final activeIndex = (_recitingSeconds * 0.85).floor().clamp(0, allWords.length - 1);
     final activeWord = allWords[activeIndex];
     final activeKey = '${activeWord.verseKey}:${activeWord.position}';
@@ -622,180 +925,96 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Top info bar ──────────────────────────────────────────────
+            // ── Top info bar (Tarteel Style matching Image 1) ──────────────
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: topBottomBg,
                 border: Border(bottom: BorderSide(color: barBorderColor)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.arrow_back_ios_rounded, color: secondaryTextColor, size: 16),
+                    icon: Icon(Icons.arrow_back_rounded, color: primaryTextColor, size: 22),
                     onPressed: () => Navigator.pop(context),
+                    tooltip: 'Back',
                     visualDensity: VisualDensity.compact,
                     padding: EdgeInsets.zero,
                   ),
-                  juzNum > 0
-                      ? Text(AppLocalizations.of(context)!.mushafJuz(juzNum),
-                          style: TextStyle(color: secondaryTextColor, fontSize: 11))
-                      : const SizedBox.shrink(),
-                  Text(
-                    surahName,
-                    style: TextStyle(color: primaryTextColor, fontSize: 12, fontWeight: FontWeight.w600),
+                  IconButton(
+                    icon: Icon(Icons.search_rounded, color: secondaryTextColor, size: 22),
+                    onPressed: _showJumpDialog,
+                    tooltip: 'Search & Jump',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 15-Line Mushaf Mode Toggle
-                      IconButton(
-                        icon: Icon(
-                          _is15LineView ? Icons.auto_stories_rounded : Icons.format_align_right_rounded,
-                          color: _is15LineView ? ItqanColors.gold : ItqanColors.mist,
-                          size: 18,
-                        ),
-                        onPressed: () {
-                          setState(() => _is15LineView = !_is15LineView);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                _is15LineView
-                                    ? '15-Line Physical Mushaf View'
-                                    : 'Flow Text View',
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        final sNum = pageAsync.maybeWhen(
+                          data: (pd) => pd.verses.isNotEmpty ? pd.verses.first.surahNumber : 1,
+                          orElse: () => 1,
+                        );
+                        _openSurahAyahPicker(sNum, 1);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'Chapter $surahName',
+                                  style: TextStyle(
+                                    color: primaryTextColor,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              duration: const Duration(seconds: 1),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                        tooltip: _is15LineView ? '15-Line Mushaf Mode' : 'Flow Text Mode',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(width: 4),
-                      // Hifz Spatial Mode toggle
-                      if (_is15LineView) ...[
-                        IconButton(
-                          icon: Icon(
-                            _isHifzMode ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                            color: _isHifzMode ? ItqanColors.gold : ItqanColors.mist,
-                            size: 18,
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: primaryTextColor,
+                                size: 18,
+                              ),
+                            ],
                           ),
-                          onPressed: () => setState(() => _isHifzMode = !_isHifzMode),
-                          tooltip: _isHifzMode ? 'Hifz Mode (Tap to Peek)' : 'Enable Hifz Mode',
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                        ),
-                        const SizedBox(width: 4),
-                        // Edition menu (Madinah vs Indopak)
-                        PopupMenuButton<MushafEdition>(
-                          icon: const Icon(Icons.style_rounded, color: ItqanColors.mist, size: 18),
-                          tooltip: 'Mushaf Edition',
-                          padding: EdgeInsets.zero,
-                          color: ItqanColors.onyx,
-                          onSelected: (ed) => setState(() => _edition = ed),
-                          itemBuilder: (ctx) => [
-                            PopupMenuItem(
-                              value: MushafEdition.madinah15Lines,
-                              child: Row(
-                                children: [
-                                  if (_edition == MushafEdition.madinah15Lines)
-                                    const Icon(Icons.check, color: ItqanColors.gold, size: 16)
-                                  else
-                                    const SizedBox(width: 16),
-                                  const SizedBox(width: 8),
-                                  const Text('Madinah (15 Lines)', style: TextStyle(color: Colors.white, fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                            PopupMenuItem(
-                              value: MushafEdition.indopak15Lines,
-                              child: Row(
-                                children: [
-                                  if (_edition == MushafEdition.indopak15Lines)
-                                    const Icon(Icons.check, color: ItqanColors.gold, size: 16)
-                                  else
-                                    const SizedBox(width: 16),
-                                  const SizedBox(width: 8),
-                                  const Text('Indopak (15 Lines)', style: TextStyle(color: Colors.white, fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      // Translation toggle (only when not in 15-line mode)
-                      if (!_is15LineView) ...[
-                        IconButton(
-                          icon: Icon(
-                            Icons.translate_rounded,
-                            color: _showTranslation ? ItqanColors.gold : ItqanColors.mist,
-                            size: 18,
+                          Text(
+                            juzNum > 0
+                                ? 'Chapter $surahName · Page $_currentPage'
+                                : 'Page $_currentPage',
+                            style: TextStyle(color: secondaryTextColor, fontSize: 11),
                           ),
-                          onPressed: () => setState(() => _showTranslation = !_showTranslation),
-                          tooltip: AppLocalizations.of(context)!.mushafTranslationToggle,
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      // Tajweed Colored Rules Toggle
-                      IconButton(
-                        icon: Icon(
-                          Icons.auto_awesome_rounded,
-                          color: _showTajweed ? ItqanColors.gold : ItqanColors.mist,
-                          size: 18,
-                        ),
-                        onPressed: () {
-                          setState(() => _showTajweed = !_showTajweed);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                _showTajweed
-                                    ? 'Tajweed Rules Color Highlight Enabled'
-                                    : 'Tajweed Rules Highlight Disabled',
-                              ),
-                              duration: const Duration(seconds: 1),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                        tooltip: _showTajweed ? 'Tajweed Colors Active' : 'Enable Tajweed Colors',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      // Tajweed Legend info button
-                      IconButton(
-                        icon: const Icon(
-                          Icons.palette_outlined,
-                          color: ItqanColors.mist,
-                          size: 18,
-                        ),
-                        onPressed: _showTajweedLegend,
-                        tooltip: 'Tajweed Color Rules Legend',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(width: 4),
-                      // Bookmark button
-                      IconButton(
-                        icon: Icon(
-                          _isBookmarked
-                              ? Icons.bookmark_rounded
-                              : Icons.bookmark_border_rounded,
-                          color: _isBookmarked ? ItqanColors.gold : ItqanColors.mist,
-                          size: 18,
-                        ),
-                        onPressed: _toggleBookmark,
-                        tooltip: _isBookmarked ? AppLocalizations.of(context)!.mushafBookmarkRemoved : AppLocalizations.of(context)!.mushafBookmarkSaved,
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                      ),
-                    ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: Icon(
+                      _isBookmarked
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                      color: _isBookmarked ? ItqanColors.gold : secondaryTextColor,
+                      size: 22,
+                    ),
+                    onPressed: _toggleBookmark,
+                    tooltip: _isBookmarked
+                        ? AppLocalizations.of(context)!.mushafBookmarkRemoved
+                        : AppLocalizations.of(context)!.mushafBookmarkSaved,
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.tune_rounded, color: secondaryTextColor, size: 22),
+                    onPressed: _showDisplaySettingsSheet,
+                    tooltip: 'Mushaf Display Settings',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
                   ),
                 ],
               ),
@@ -817,6 +1036,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                     isHifzMode: _isHifzMode,
                     showTajweed: _showTajweed,
                     edition: _edition,
+                    fontSize: _mushafFontSize,
                     mistakeWordKeys: page == _currentPage ? _mistakeWordKeys : null,
                     correctWordKeys: page == _currentPage ? _correctWordKeys : null,
                     activeVerseKey: page == _currentPage ? _activeVerseKey : null,
@@ -905,12 +1125,12 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
           // Navigation and quick toggles
           IconButton(
             icon: Icon(
-              _is15LineView ? Icons.auto_stories_rounded : Icons.format_align_right_rounded,
-              color: _is15LineView ? ItqanColors.gold : ItqanColors.mist,
+              Icons.auto_stories_rounded,
+              color: _is15LineView ? ItqanColors.gold : (isDark ? Colors.white70 : Colors.black54),
               size: 19,
             ),
             onPressed: () => setState(() => _is15LineView = !_is15LineView),
-            tooltip: _is15LineView ? '15-Line Mushaf' : 'Flow Text',
+            tooltip: _is15LineView ? '15-Line Mushaf Mode' : 'Tarteel Mushaf Mode',
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.symmetric(horizontal: 4),
           ),
@@ -1147,6 +1367,7 @@ class _MushafPage extends ConsumerWidget {
   final bool isHifzMode;
   final bool showTajweed;
   final MushafEdition edition;
+  final double fontSize;
   final Set<String>? mistakeWordKeys;
   final Set<String>? correctWordKeys;
   final String? activeVerseKey;
@@ -1155,10 +1376,11 @@ class _MushafPage extends ConsumerWidget {
   const _MushafPage({
     required this.pageNumber,
     required this.showTranslation,
-    this.is15LineView = true,
+    this.is15LineView = false,
     this.isHifzMode = false,
     this.showTajweed = true,
     this.edition = MushafEdition.madinah15Lines,
+    this.fontSize = 26.0,
     this.mistakeWordKeys,
     this.correctWordKeys,
     this.activeVerseKey,
@@ -1192,14 +1414,14 @@ class _MushafPage extends ConsumerWidget {
           orElse: () => <int, Surah>{},
         );
 
-        if (is15LineView) {
-          final layoutService = MushafLayoutService();
-          final layout = layoutService.buildPageLayout(
-            pageData,
-            edition: edition,
-            surahMap: surahMap,
-          );
+        final layoutService = MushafLayoutService();
+        final layout = layoutService.buildPageLayout(
+          pageData,
+          edition: edition,
+          surahMap: surahMap,
+        );
 
+        if (is15LineView) {
           return Mushaf15LineView(
             layout: layout,
             surahMap: surahMap,
@@ -1212,35 +1434,17 @@ class _MushafPage extends ConsumerWidget {
           );
         }
 
-        final groups = <_SurahGroup>[];
-        for (final verse in pageData.verses) {
-          if (groups.isEmpty || groups.last.surahNumber != verse.surahNumber) {
-            groups.add(_SurahGroup(verse.surahNumber, []));
-          }
-          groups.last.verses.add(verse);
-        }
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final group in groups) ...[
-                if (group.verses.first.isFirstOfSurah) ...[
-                  _SurahBanner(
-                    surah: surahMap[group.surahNumber],
-                    surahNumber: group.surahNumber,
-                  ),
-                ],
-                _VerseBlock(
-                  verses: group.verses,
-                  showTranslation: showTranslation,
-                  showTajweed: showTajweed,
-                ),
-              ],
-              const SizedBox(height: 8),
-            ],
-          ),
+        // Tarteel Modern Large-Font Mushaf Mode (Image 1 style)
+        return TarteelMushafView(
+          layout: layout,
+          surahMap: surahMap,
+          isHifzMode: isHifzMode,
+          showTajweed: showTajweed,
+          mistakeWordKeys: mistakeWordKeys,
+          correctWordKeys: correctWordKeys,
+          activeVerseKey: activeVerseKey,
+          activeWordKey: activeWordKey,
+          fontSize: fontSize,
         );
       },
     );

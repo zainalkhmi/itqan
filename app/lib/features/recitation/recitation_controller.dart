@@ -6,13 +6,11 @@ import 'package:just_audio/just_audio.dart';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import '../quran/models/ayah.dart';
-import '../quran/data/quran_catalog.dart';
 import '../scoring/scoring_service.dart';
 import '../scoring/models/score_result.dart';
 import '../offline/services/audio_download_service.dart';
 import '../settings/settings_service.dart';
 import '../scoring/services/inference_config_service.dart';
-import 'widgets/word_token.dart';
 
 enum RecitationState { idle, playing, recording, processing, scored }
 
@@ -22,9 +20,8 @@ class RecitationData {
   final ScoreResult? result;
   final Duration recordingDuration;
   final String? error;
-  final Map<int, WordState> liveWordStates;
-  final int activeWordIndex;
-  final String? detectedSurahName;
+  final bool isSpeaking;
+  final List<double>? recentWaveform;
 
   const RecitationData({
     this.state = RecitationState.idle,
@@ -32,9 +29,8 @@ class RecitationData {
     this.result,
     this.recordingDuration = Duration.zero,
     this.error,
-    this.liveWordStates = const {},
-    this.activeWordIndex = 0,
-    this.detectedSurahName,
+    this.isSpeaking = false,
+    this.recentWaveform,
   });
 
   RecitationData copyWith({
@@ -43,9 +39,8 @@ class RecitationData {
     ScoreResult? result,
     Duration? recordingDuration,
     String? error,
-    Map<int, WordState>? liveWordStates,
-    int? activeWordIndex,
-    String? detectedSurahName,
+    bool? isSpeaking,
+    List<double>? recentWaveform,
   }) {
     return RecitationData(
       state: state ?? this.state,
@@ -53,9 +48,8 @@ class RecitationData {
       result: result ?? this.result,
       recordingDuration: recordingDuration ?? this.recordingDuration,
       error: error,
-      liveWordStates: liveWordStates ?? this.liveWordStates,
-      activeWordIndex: activeWordIndex ?? this.activeWordIndex,
-      detectedSurahName: detectedSurahName ?? this.detectedSurahName,
+      isSpeaking: isSpeaking ?? this.isSpeaking,
+      recentWaveform: recentWaveform ?? this.recentWaveform,
     );
   }
 }
@@ -79,19 +73,7 @@ class RecitationController extends StateNotifier<RecitationData> {
   }
 
   void loadAyah(Ayah ayah) {
-    String? surahName;
-    try {
-      final s = QuranCatalog.getSurah(ayah.surahNumber);
-      surahName = s.nameSimple;
-    } catch (_) {
-      surahName = 'Surah ${ayah.surahNumber}';
-    }
-    state = RecitationData(
-      ayah: ayah,
-      detectedSurahName: surahName,
-      liveWordStates: const {},
-      activeWordIndex: 0,
-    );
+    state = RecitationData(ayah: ayah);
   }
 
   Future<void> listen() async {
@@ -154,50 +136,12 @@ class RecitationController extends StateNotifier<RecitationData> {
       path: recordingPath ?? '',
     );
 
-    String? surahName;
-    if (state.ayah != null) {
-      try {
-        final s = QuranCatalog.getSurah(state.ayah!.surahNumber);
-        surahName = s.nameSimple;
-      } catch (_) {
-        surahName = 'Surah ${state.ayah!.surahNumber}';
-      }
-    }
+    state = state.copyWith(state: RecitationState.recording, recordingDuration: Duration.zero);
 
-    state = state.copyWith(
-      state: RecitationState.recording,
-      recordingDuration: Duration.zero,
-      liveWordStates: const {},
-      activeWordIndex: 0,
-      detectedSurahName: surahName,
-    );
-
-    _recordingTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
-        final newDuration = state.recordingDuration + const Duration(milliseconds: 700);
-        final wordsCount = state.ayah?.words.isNotEmpty == true
-            ? state.ayah!.words.length
-            : (state.ayah?.textUthmani.trim().split(RegExp(r'\s+')).length ?? 0);
-
-        final updatedStates = Map<int, WordState>.from(state.liveWordStates);
-        int nextActiveIndex = state.activeWordIndex;
-
-        if (wordsCount > 0) {
-          final elapsedSec = newDuration.inMilliseconds / 1000.0;
-          final targetIndex = (elapsedSec / 0.9).floor().clamp(0, wordsCount - 1);
-
-          for (int i = 0; i < targetIndex; i++) {
-            if (!updatedStates.containsKey(i)) {
-              updatedStates[i] = WordState.correct;
-            }
-          }
-          nextActiveIndex = targetIndex;
-        }
-
         state = state.copyWith(
-          recordingDuration: newDuration,
-          liveWordStates: updatedStates,
-          activeWordIndex: nextActiveIndex,
+          recordingDuration: state.recordingDuration + const Duration(seconds: 1),
         );
       }
     });
@@ -226,19 +170,7 @@ class RecitationController extends StateNotifier<RecitationData> {
           mode: inferenceMode,
           scoringDifficulty: settings.scoringDifficulty,
         );
-
-        final finalWordStates = <int, WordState>{};
-        for (int i = 0; i < result.wordScores.length; i++) {
-          final ws = result.wordScores[i];
-          finalWordStates[i] = ws.isMistake ? WordState.error : WordState.correct;
-        }
-
-        state = state.copyWith(
-          state: RecitationState.scored,
-          result: result,
-          liveWordStates: finalWordStates,
-          activeWordIndex: result.wordScores.length,
-        );
+        state = state.copyWith(state: RecitationState.scored, result: result);
         await _saveSession(result);
       } catch (e) {
         state = state.copyWith(state: RecitationState.idle, error: 'Scoring failed: $e');
@@ -268,12 +200,7 @@ class RecitationController extends StateNotifier<RecitationData> {
   }
 
   void retry() {
-    state = RecitationData(
-      ayah: state.ayah,
-      detectedSurahName: state.detectedSurahName,
-      liveWordStates: const {},
-      activeWordIndex: 0,
-    );
+    state = RecitationData(ayah: state.ayah);
   }
 
   @override

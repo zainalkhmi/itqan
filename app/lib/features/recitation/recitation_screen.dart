@@ -19,6 +19,7 @@ import 'widgets/word_token.dart';
 import 'widgets/live_tracking_unmasking_card.dart';
 import 'widgets/surah_ayah_picker_sheet.dart';
 import '../settings/settings_service.dart';
+import '../settings/settings_screen.dart';
 import '../scoring/services/inference_config_service.dart';
 import '../tajweed/tajweed_data.dart';
 
@@ -243,6 +244,15 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
         ? (_isPeeking ? ItqanColors.gold : ItqanColors.goldGlow)
         : (_isPeeking ? ItqanColors.gold : ItqanColors.lightBorder);
 
+    final inferenceMode = ref.watch(inferenceConfigProvider);
+    final engineName = switch (inferenceMode) {
+      InferenceMode.tajweedFormer => 'TajweedFormer V4',
+      InferenceMode.mlServer => 'Whisper AI',
+      InferenceMode.onDevice => 'On-Device INT8 ONNX',
+      InferenceMode.acoustic => 'Acoustic Engine',
+      InferenceMode.auto => 'Auto (TajweedFormer V4)',
+    };
+
     final currentAyahIdx = _surahAyahs.indexWhere((a) => a.ayahNumber == _currentAyah.ayahNumber);
     final hasPrev = (_surahAyahs.isNotEmpty && currentAyahIdx > 0) || _currentSurahNumber > 1;
     final hasNext = (_surahAyahs.isNotEmpty && currentAyahIdx != -1 && currentAyahIdx + 1 < _surahAyahs.length) || _currentSurahNumber < 114;
@@ -303,18 +313,8 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.chevron_left_rounded, color: hasPrev ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
-            tooltip: 'Previous Ayah',
-            onPressed: hasPrev ? _prevAyah : null,
-          ),
-          IconButton(
-            icon: Icon(Icons.chevron_right_rounded, color: hasNext ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
-            tooltip: 'Next Ayah',
-            onPressed: hasNext ? _nextAyah : null,
-          ),
-          const SizedBox(width: 4),
+        actions: const [
+          SizedBox(width: 48), // Balances leading back button
         ],
       ),
       body: SafeArea(
@@ -446,11 +446,62 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
 
               const SizedBox(height: ItqanSpacing.lg),
 
-              // Waveform (visible when recording)
+              // Acoustic Waveform with Selected AI Engine (visible when recording)
               AnimatedOpacity(
                 opacity: isRecording ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
-                child: WaveformVisualizer(isActive: isRecording),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                        );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: data.isSpeaking ? const Color(0xFF10B981) : ItqanColors.mist.withOpacity(0.4),
+                              shape: BoxShape.circle,
+                              boxShadow: data.isSpeaking
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(0xFF10B981).withOpacity(0.6),
+                                        blurRadius: 6,
+                                        spreadRadius: 1,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            engineName,
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: textColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    WaveformVisualizer(
+                      isActive: isRecording,
+                      waveform: data.recentWaveform,
+                      engineLabel: engineName,
+                    ),
+                  ],
+                ),
               ),
 
               // Recording timer
@@ -483,7 +534,16 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                   child: Text(data.error!, style: const TextStyle(color: ItqanColors.error)),
                 ),
 
-              const SizedBox(height: ItqanSpacing.lg),
+              const SizedBox(height: ItqanSpacing.md),
+
+              // ── Colorful Ayah Navigation Bar (Above Recitation Button) ──
+              _buildColorfulAyahNavigation(
+                hasPrev: hasPrev,
+                hasNext: hasNext,
+                isDark: isDark,
+              ),
+
+              const SizedBox(height: ItqanSpacing.md),
 
               // Controls
               Row(
@@ -536,33 +596,45 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
       InferenceMode.mlServer => ('Whisper AI', Icons.auto_awesome_rounded, ItqanColors.gold),
       InferenceMode.onDevice => ('On-Device INT8 ONNX', Icons.memory_rounded, ItqanColors.info),
       InferenceMode.acoustic => ('Acoustic Engine', Icons.graphic_eq_rounded, ItqanColors.mist),
-      InferenceMode.auto => ('AI Engine: Auto', Icons.auto_awesome, ItqanColors.gold),
+      InferenceMode.auto => ('Auto (TajweedFormer V4)', Icons.auto_awesome, ItqanColors.gold),
     };
 
     return Padding(
       padding: const EdgeInsets.only(bottom: ItqanSpacing.sm),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(ItqanRadius.full),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: 5),
-            Text(
-              '$label • ${settings.scoringDifficulty.toUpperCase()}',
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.3,
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(ItqanRadius.full),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  '$label • ${settings.scoringDifficulty.toUpperCase()}',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -633,97 +705,53 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final arabicTextColor = isDark ? ItqanColors.snow : ItqanColors.lightTextPrimary;
     final settings = ref.watch(settingsProvider);
-    final data = ref.watch(recitationProvider);
-    final liveStates = data.liveWordStates;
-    final activeIndex = data.activeWordIndex;
-    final isRecording = data.state == RecitationState.recording;
 
     if (_isPeeking || _hifzMode == HifzMode.off) {
-      final words = _currentAyah.textUthmani.trim().split(RegExp(r'\s+'));
-      return Directionality(
-        textDirection: TextDirection.rtl,
-        child: Wrap(
-          alignment: WrapAlignment.center,
-          spacing: 6,
-          runSpacing: 8,
-          children: words.asMap().entries.map((entry) {
-            final idx = entry.key;
-            final word = entry.value;
-
-            // Determine word state for real-time background color
-            WordState wState = WordState.idle;
-            if (liveStates.containsKey(idx)) {
-              wState = liveStates[idx]!;
-            } else if (isRecording && idx == activeIndex) {
-              wState = WordState.active;
-            }
-
-            final key = '${_currentAyah.surahNumber}:${_currentAyah.ayahNumber}:$idx';
-            final rule = tajweedAnnotations[key];
-
-            Color bgColor = Colors.transparent;
-            Color textColor = rule != null && settings.tajweedOverlay ? tajweedColor(rule) : arabicTextColor;
-            Border? border;
-            List<BoxShadow>? shadows;
-
-            if (wState == WordState.correct) {
-              bgColor = const Color(0xFF10B981).withOpacity(0.30); // Realtime Green
-              textColor = const Color(0xFF34D399);
-              border = Border.all(color: const Color(0xFF10B981), width: 1.5);
-              shadows = [
-                BoxShadow(
-                  color: const Color(0xFF10B981).withOpacity(0.35),
-                  blurRadius: 8,
-                  spreadRadius: 1,
+      if (settings.tajweedOverlay) {
+        final words = _currentAyah.textUthmani.split(' ');
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 4,
+            runSpacing: 4,
+            children: words.asMap().entries.map((entry) {
+              final word = entry.value;
+              final key = '${_currentAyah.surahNumber}:${_currentAyah.ayahNumber}:${entry.key}';
+              final rule = tajweedAnnotations[key];
+              return Container(
+                padding: rule != null ? const EdgeInsets.symmetric(horizontal: 4, vertical: 2) : EdgeInsets.zero,
+                decoration: rule != null
+                    ? BoxDecoration(
+                        color: tajweedColor(rule).withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(4),
+                      )
+                    : null,
+                child: Text(
+                  word,
+                  style: TextStyle(
+                    fontFamily: 'NotoNaskhArabic',
+                    fontSize: settings.fontSize,
+                    height: 2.0,
+                    color: rule != null ? tajweedColor(rule) : arabicTextColor,
+                  ),
                 ),
-              ];
-            } else if (wState == WordState.error) {
-              bgColor = const Color(0xFFEF4444).withOpacity(0.35); // Realtime Red for Miss/Mistake
-              textColor = const Color(0xFFF87171);
-              border = Border.all(color: const Color(0xFFEF4444), width: 1.5);
-              shadows = [
-                BoxShadow(
-                  color: const Color(0xFFEF4444).withOpacity(0.35),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ];
-            } else if (wState == WordState.active) {
-              bgColor = ItqanColors.goldGlow;
-              textColor = ItqanColors.goldLight;
-              border = Border.all(color: ItqanColors.gold.withOpacity(0.8), width: 1.5);
-              shadows = [
-                BoxShadow(
-                  color: ItqanColors.gold.withOpacity(0.25),
-                  blurRadius: 6,
-                ),
-              ];
-            } else if (rule != null && settings.tajweedOverlay) {
-              bgColor = tajweedColor(rule).withOpacity(0.20);
-            }
+              );
+            }).toList(),
+          ),
+        );
+      }
 
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(8),
-                border: border,
-                boxShadow: shadows,
-              ),
-              child: Text(
-                word,
-                style: TextStyle(
-                  fontFamily: 'NotoNaskhArabic',
-                  fontSize: settings.fontSize,
-                  height: 2.0,
-                  color: textColor,
-                  fontWeight: wState != WordState.idle ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            );
-          }).toList(),
+      return Text(
+        _currentAyah.textUthmani,
+        style: TextStyle(
+          fontFamily: 'NotoNaskhArabic',
+          fontSize: settings.fontSize,
+          height: 2.2,
+          color: arabicTextColor,
         ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.rtl,
       );
     }
 
@@ -792,27 +820,13 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Widget _buildWordTokensDisplay() {
     if (_currentAyah.words.isEmpty) return const SizedBox.shrink();
 
-    final data = ref.watch(recitationProvider);
-    final settings = ref.watch(settingsProvider);
-    final liveStates = data.liveWordStates;
-    final activeIndex = data.activeWordIndex;
-    final isRecording = data.state == RecitationState.recording;
-
     if (_hifzMode == HifzMode.blank && !_isPeeking) {
       return Wrap(
         alignment: WrapAlignment.center,
         textDirection: TextDirection.rtl,
         spacing: ItqanSpacing.xs,
         runSpacing: ItqanSpacing.xs,
-        children: _currentAyah.words.asMap().entries.map<Widget>((entry) {
-          final idx = entry.key;
-          final w = entry.value;
-          final state = liveStates[idx] ?? (isRecording && idx == activeIndex ? WordState.active : WordState.idle);
-
-          if (state == WordState.correct || state == WordState.error) {
-            return WordToken(word: w, state: state, fontSize: settings.fontSize);
-          }
-
+        children: _currentAyah.words.map((w) {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
@@ -831,11 +845,8 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
       textDirection: TextDirection.rtl,
       spacing: ItqanSpacing.xs,
       runSpacing: ItqanSpacing.xs,
-      children: _currentAyah.words.asMap().entries.map<Widget>((entry) {
-        final idx = entry.key;
-        final w = entry.value;
-        final state = liveStates[idx] ?? (isRecording && idx == activeIndex ? WordState.active : WordState.idle);
-        return WordToken(word: w, state: state, fontSize: settings.fontSize);
+      children: _currentAyah.words.map((w) {
+        return WordToken(word: w, state: WordState.idle);
       }).toList(),
     );
 
@@ -847,6 +858,116 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     }
 
     return tokensWidget;
+  }
+
+  Widget _buildColorfulAyahNavigation({
+    required bool hasPrev,
+    required bool hasNext,
+    required bool isDark,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E28) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: isDark ? const Color(0xFF2E2E3E) : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.35 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ColorfulNavButton(
+              label: 'Previous',
+              icon: Icons.chevron_left_rounded,
+              iconLeft: true,
+              isEnabled: hasPrev,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              shadowColor: const Color(0xFF6366F1).withOpacity(0.4),
+              onTap: hasPrev ? _prevAyah : null,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              SurahAyahPickerSheet.show(
+                context,
+                currentSurahNumber: _currentSurahNumber,
+                currentAyahNumber: _currentAyah.ayahNumber,
+                onSelected: (sNum, aNum) {
+                  _loadSurah(sNum, targetAyahNumber: aNum);
+                },
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFF59E0B).withOpacity(0.45),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.auto_stories_rounded, color: Colors.white, size: 14),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Ayah ${_currentAyah.ayahNumber}${_surahAyahs.isNotEmpty ? ' / ${_surahAyahs.length}' : ''}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(Icons.unfold_more_rounded, color: Colors.white70, size: 13),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _ColorfulNavButton(
+              label: 'Next',
+              icon: Icons.chevron_right_rounded,
+              iconLeft: false,
+              isEnabled: hasNext,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              shadowColor: const Color(0xFF10B981).withOpacity(0.4),
+              onTap: hasNext ? _nextAyah : null,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -896,6 +1017,83 @@ class _ControlButton extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ColorfulNavButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool iconLeft;
+  final bool isEnabled;
+  final Gradient gradient;
+  final Color shadowColor;
+  final VoidCallback? onTap;
+
+  const _ColorfulNavButton({
+    required this.label,
+    required this.icon,
+    required this.iconLeft,
+    required this.isEnabled,
+    required this.gradient,
+    required this.shadowColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: isEnabled ? 1.0 : 0.4,
+      child: GestureDetector(
+        onTap: isEnabled ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: isEnabled
+                ? gradient
+                : LinearGradient(
+                    colors: [Colors.grey.shade600, Colors.grey.shade700],
+                  ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: isEnabled
+                ? [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (iconLeft) ...[
+                Icon(icon, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.3,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (!iconLeft) ...[
+                const SizedBox(width: 4),
+                Icon(icon, color: Colors.white, size: 16),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
