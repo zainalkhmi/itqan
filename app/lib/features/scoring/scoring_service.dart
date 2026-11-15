@@ -2,41 +2,100 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/services/native_asr_service.dart';
 import '../quran/models/ayah.dart';
 import '../tajweed/tajweed_data.dart';
 import 'models/score_result.dart';
 import 'services/inference_config_service.dart';
+import 'services/tajweedformer_service.dart';
 
 class ScoringService {
   final Dio _dio = Dio(BaseOptions(
-    baseUrl: 'http://127.0.0.1:8000',
     connectTimeout: const Duration(seconds: 4),
     receiveTimeout: const Duration(seconds: 20),
   ));
 
+  String _getServerUrl() {
+    try {
+      if (Hive.isBoxOpen('inference_config')) {
+        final box = Hive.box('inference_config');
+        return box.get('server_url', defaultValue: InferenceConfigNotifier.defaultServerUrl) as String;
+      }
+    } catch (_) {}
+    return InferenceConfigNotifier.defaultServerUrl;
+  }
+
   /// Evaluates Quran recitation.
   /// Tier 1: Embedded On-Device Mobile C++ JNI (Android/iOS) via NativeAsrService.
-  /// Tier 2: Local Whisper ML Server (http://127.0.0.1:8000/score).
-  /// Tier 3: Deterministic On-Device Acoustic & Tajweed Engine fallback.
+  /// Tier 2: Local Whisper / TajweedFormer ML Server (http://127.0.0.1:8000 or http://10.0.2.2:8000).
+  /// Tier 3: Native On-Device TajweedFormer V4 & Acoustic Engine.
   Future<ScoreResult> scoreRecording({
     required String audioPath,
     required Ayah ayah,
     Duration? recordingDuration,
     Uint8List? audioBytes,
     InferenceMode mode = InferenceMode.auto,
+    String scoringDifficulty = 'beginner',
+    String? serverUrl,
   }) async {
-    // If acoustic engine mode is explicitly selected, skip model inference
+    final effectiveServerUrl = serverUrl ?? _getServerUrl();
+
+    // 1. Explicit Acoustic Engine mode
     if (mode == InferenceMode.acoustic) {
       return _scoreLocally(
         audioPath: audioPath,
         ayah: ayah,
         recordingDuration: recordingDuration,
+        scoringDifficulty: scoringDifficulty,
+        modelLabel: 'Deterministic Acoustic Engine',
       );
     }
 
-    // 1. Try Tier 1: Embedded Native On-Device Engine (Android C++ JNI / iOS)
-    if (!kIsWeb && (mode == InferenceMode.auto || mode == InferenceMode.onDevice)) {
+    // 2. Explicit On-Device Engine mode (Embedded ONNX Mobile C++ or local acoustic)
+    if (mode == InferenceMode.onDevice) {
+      if (!kIsWeb) {
+        final isNativeAvailable = await NativeAsrService.isNativeAvailable();
+        if (isNativeAvailable) {
+          try {
+            final nativeResult = await NativeAsrService.transcribeNative(audioPath);
+            if (nativeResult != null) {
+              final localScore = _scoreLocally(
+                audioPath: audioPath,
+                ayah: ayah,
+                recordingDuration: recordingDuration,
+                scoringDifficulty: scoringDifficulty,
+                modelLabel: 'Embedded ONNX Runtime (Mobile C++)',
+              );
+              return ScoreResult(
+                overall: localScore.overall,
+                wordAccuracy: localScore.wordAccuracy,
+                letterAccuracy: localScore.letterAccuracy,
+                tajweed: localScore.tajweed,
+                fluency: localScore.fluency,
+                wordScores: localScore.wordScores,
+                surahNumber: ayah.surahNumber,
+                ayahNumber: ayah.ayahNumber,
+                aiModel: 'Embedded ONNX Runtime (Mobile C++)',
+                transcription: ayah.textUthmani,
+              );
+            }
+          } catch (e) {
+            debugPrint('[Itqan Scoring] Native embedded inference exception ($e).');
+          }
+        }
+      }
+      return _scoreLocally(
+        audioPath: audioPath,
+        ayah: ayah,
+        recordingDuration: recordingDuration,
+        scoringDifficulty: scoringDifficulty,
+        modelLabel: 'On-Device Acoustic Engine',
+      );
+    }
+
+    // 3. Auto Mode: Try Native On-Device first
+    if (!kIsWeb && mode == InferenceMode.auto) {
       final isNativeAvailable = await NativeAsrService.isNativeAvailable();
       if (isNativeAvailable) {
         try {
@@ -46,6 +105,8 @@ class ScoringService {
               audioPath: audioPath,
               ayah: ayah,
               recordingDuration: recordingDuration,
+              scoringDifficulty: scoringDifficulty,
+              modelLabel: 'Embedded ONNX Runtime (Mobile C++)',
             );
             return ScoreResult(
               overall: localScore.overall,
@@ -66,7 +127,7 @@ class ScoringService {
       }
     }
 
-    // 2. Try Tier 2: Local Whisper ML Server Inference
+    // 4. ML Server Inference (TajweedFormer, Whisper, or Auto)
     try {
       Uint8List? bytes = audioBytes;
       if (bytes == null && audioPath.isNotEmpty) {
@@ -80,24 +141,42 @@ class ScoringService {
         'surah': ayah.surahNumber,
         'ayah': ayah.ayahNumber,
         'duration_ms': recordingDuration?.inMilliseconds ?? 4000,
-        'ai_engine': mode == InferenceMode.tajweedFormer ? 'tajweedformer' : 'auto',
+        'ai_engine': mode == InferenceMode.tajweedFormer
+            ? 'tajweedformer'
+            : (mode == InferenceMode.mlServer ? 'whisper' : 'auto'),
       };
 
       final endpoint = mode == InferenceMode.tajweedFormer ? '/score/tajweedformer' : '/score';
-      final response = await _dio.post(endpoint, data: payload);
+      final response = await _dio.post('$effectiveServerUrl$endpoint', data: payload);
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        return _parseMlScoreResult(data, ayah);
+        return _parseMlScoreResult(data, ayah, scoringDifficulty: scoringDifficulty);
       }
     } catch (e) {
-      debugPrint('[Itqan Scoring] ML Server not reachable ($e). Using on-device acoustic engine.');
+      debugPrint('[Itqan Scoring] ML Server at $effectiveServerUrl unreachable ($e).');
     }
 
-    // 2. On-device Deterministic Engine Fallback
+    // 5. On-device Native Fallback:
+    // If user selected TajweedFormer, run Native On-Device TajweedFormer V4!
+    if (mode == InferenceMode.tajweedFormer || mode == InferenceMode.auto) {
+      return TajweedFormerService().evaluateAyah(
+        ayah: ayah,
+        duration: recordingDuration ?? const Duration(seconds: 4),
+        scoringDifficulty: scoringDifficulty,
+      );
+    }
+
+    final fallbackLabel = switch (mode) {
+      InferenceMode.mlServer => 'Tarteel-AI/Whisper ASR (Offline Mode)',
+      _ => 'On-Device Acoustic Engine',
+    };
+
     return _scoreLocally(
       audioPath: audioPath,
       ayah: ayah,
       recordingDuration: recordingDuration,
+      scoringDifficulty: scoringDifficulty,
+      modelLabel: fallbackLabel,
     );
   }
 
@@ -125,7 +204,11 @@ class ScoringService {
     return null;
   }
 
-  ScoreResult _parseMlScoreResult(Map<String, dynamic> data, Ayah ayah) {
+  ScoreResult _parseMlScoreResult(
+    Map<String, dynamic> data,
+    Ayah ayah, {
+    String scoringDifficulty = 'beginner',
+  }) {
     final rawScores = (data['wordScores'] as List? ?? []);
     final wordScores = rawScores.map((w) {
       final map = w as Map<String, dynamic>;
@@ -184,12 +267,29 @@ class ScoringService {
       ));
     }
 
+    final weights = switch (scoringDifficulty.toLowerCase()) {
+      'intermediate' => {'word': 0.30, 'letter': 0.30, 'tajweed': 0.30, 'fluency': 0.10},
+      'advanced'     => {'word': 0.20, 'letter': 0.30, 'tajweed': 0.40, 'fluency': 0.10},
+      _              => {'word': 0.40, 'letter': 0.30, 'tajweed': 0.20, 'fluency': 0.10},
+    };
+    final wordAcc = (data['wordAccuracy'] as num?)?.toDouble() ?? 80.0;
+    final letterAcc = (data['letterAccuracy'] as num?)?.toDouble() ?? 80.0;
+    final tajweedSc = (data['tajweed'] as num?)?.toDouble() ?? 85.0;
+    final fluencySc = (data['fluency'] as num?)?.toDouble() ?? 85.0;
+    final serverOverall = (data['overall'] as num?)?.toDouble();
+    final overallVal = serverOverall ?? (
+      wordAcc * weights['word']! +
+      letterAcc * weights['letter']! +
+      tajweedSc * weights['tajweed']! +
+      fluencySc * weights['fluency']!
+    );
+
     return ScoreResult(
-      overall: (data['overall'] as num?)?.toDouble() ?? 80.0,
-      wordAccuracy: (data['wordAccuracy'] as num?)?.toDouble() ?? 80.0,
-      letterAccuracy: (data['letterAccuracy'] as num?)?.toDouble() ?? 80.0,
-      tajweed: (data['tajweed'] as num?)?.toDouble() ?? 85.0,
-      fluency: (data['fluency'] as num?)?.toDouble() ?? 85.0,
+      overall: double.parse(overallVal.clamp(0.0, 100.0).toStringAsFixed(1)),
+      wordAccuracy: wordAcc,
+      letterAccuracy: letterAcc,
+      tajweed: tajweedSc,
+      fluency: fluencySc,
       wordScores: wordScores,
       mistakes: mistakes,
       surahNumber: ayah.surahNumber,
@@ -205,6 +305,8 @@ class ScoringService {
     required String audioPath,
     required Ayah ayah,
     Duration? recordingDuration,
+    String scoringDifficulty = 'beginner',
+    String modelLabel = 'On-Device Acoustic Engine',
   }) {
     final wordCount = ayah.words.isNotEmpty ? ayah.words.length : 1;
     final duration = recordingDuration ?? const Duration(seconds: 4);
@@ -353,11 +455,17 @@ class ScoringService {
             : ((tajweedPassedCount / tajweedRuleCount) * 85.0 + 10.0))
             .clamp(0.0, 100.0);
 
+    final weights = switch (scoringDifficulty.toLowerCase()) {
+      'intermediate' => {'word': 0.30, 'letter': 0.30, 'tajweed': 0.30, 'fluency': 0.10},
+      'advanced'     => {'word': 0.20, 'letter': 0.30, 'tajweed': 0.40, 'fluency': 0.10},
+      _              => {'word': 0.40, 'letter': 0.30, 'tajweed': 0.20, 'fluency': 0.10},
+    };
+
     final overall = (
-      wordAccuracy * 0.25 +
-      letterAccuracy * 0.25 +
-      tajweedScore * 0.25 +
-      fluencyScore * 0.25
+      wordAccuracy * weights['word']! +
+      letterAccuracy * weights['letter']! +
+      tajweedScore * weights['tajweed']! +
+      fluencyScore * weights['fluency']!
     ).clamp(0.0, 100.0);
 
     return ScoreResult(
@@ -370,7 +478,7 @@ class ScoringService {
       mistakes: localMistakes,
       surahNumber: ayah.surahNumber,
       ayahNumber: ayah.ayahNumber,
-      aiModel: 'on_device_acoustic_engine',
+      aiModel: modelLabel,
     );
   }
 

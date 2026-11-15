@@ -43,6 +43,9 @@ void main() {
       // Find the Text widget and check its color
       final text = tester.widget<Text>(find.text('بِسْمِ'));
       expect(text.style?.color, equals(ItqanColors.correct));
+      final container = tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
+      final deco = container.decoration as BoxDecoration;
+      expect(deco.color, equals(ItqanColors.correct.withOpacity(0.28)));
     });
 
     testWidgets('renders in error state with red color', (tester) async {
@@ -55,6 +58,9 @@ void main() {
       );
       final text = tester.widget<Text>(find.text('بِسْمِ'));
       expect(text.style?.color, equals(ItqanColors.error));
+      final container = tester.widget<AnimatedContainer>(find.byType(AnimatedContainer));
+      final deco = container.decoration as BoxDecoration;
+      expect(deco.color, equals(ItqanColors.error.withOpacity(0.32)));
     });
 
     testWidgets('renders in warning state with warning color', (tester) async {

@@ -51,7 +51,15 @@ class _LiveTrackingUnmaskingCardState extends State<LiveTrackingUnmaskingCard> w
 
   @override
   Widget build(BuildContext context) {
-    final words = widget.ayah.words;
+    final words = widget.ayah.words.isNotEmpty
+        ? widget.ayah.words
+        : widget.ayah.textUthmani
+            .trim()
+            .split(RegExp(r'\s+'))
+            .asMap()
+            .entries
+            .map((e) => Word(position: e.key + 1, textUthmani: e.value, transliteration: ''))
+            .toList();
     final totalWords = words.length;
     final unmaskedCount = widget.unmaskedIndices.length;
     final progress = totalWords > 0 ? (unmaskedCount / totalWords).clamp(0.0, 1.0) : 0.0;

@@ -220,7 +220,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     Row(
                       children: [
                         Text(
-                          '${TranslationService().getLanguage(s.language)?.flagEmoji ?? "🌐"} ${TranslationService().getLanguage(s.language)?.name ?? s.language}',
+                          '${TranslationService().getLanguage(s.language).flagEmoji} ${TranslationService().getLanguage(s.language).name}',
                           style: ItqanTypography.body.copyWith(color: ItqanColors.gold),
                         ),
                         const SizedBox(width: 4),
@@ -370,6 +370,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ref.read(inferenceConfigProvider.notifier).setMode(mode);
               },
               compact: true,
+              scrollable: true,
             ),
             const SizedBox(height: ItqanSpacing.xs),
             Text(
@@ -381,6 +382,89 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 _ => 'Auto — Automatically selects TajweedFormer V4 / Whisper when available, falling back to on-device engine.',
               },
               style: ItqanTypography.caption.copyWith(fontSize: 11, color: ItqanColors.mist),
+            ),
+            const SizedBox(height: ItqanSpacing.sm),
+            FutureBuilder<InferenceEngineStatus>(
+              future: ref.read(inferenceConfigProvider.notifier).checkStatus(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text('Verifying engine availability...', style: TextStyle(color: ItqanColors.mist, fontSize: 11)),
+                  );
+                }
+                final status = snapshot.data;
+                if (status == null) return const SizedBox.shrink();
+                final isOnline = status.isServerOnline;
+                final hasOnDevice = status.isOnDeviceModelPresent;
+                final isTajweed = status.mode == InferenceMode.tajweedFormer;
+                final isReady = (status.mode == InferenceMode.acoustic || (status.mode == InferenceMode.onDevice && hasOnDevice) || isOnline || isTajweed);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: (isReady ? ItqanColors.correct : ItqanColors.warning).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(ItqanRadius.sm),
+                        border: Border.all(
+                          color: (isReady ? ItqanColors.correct : ItqanColors.warning).withOpacity(0.35),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isReady ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                            size: 14,
+                            color: isReady ? ItqanColors.correct : ItqanColors.warning,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              status.mode == InferenceMode.acoustic
+                                  ? 'Deterministic Acoustic Engine Ready (Full Offline)'
+                                  : (status.mode == InferenceMode.onDevice
+                                      ? (hasOnDevice ? 'Bundled INT8 ONNX Model Ready (On-Device)' : 'Local Acoustic Fallback Ready')
+                                      : (isOnline
+                                          ? 'ML Server Online (${status.latencyMs}ms • ${status.modelName})'
+                                          : (isTajweed
+                                              ? 'Quran Lab TajweedFormer V4 Ready (Native On-Device & Offline)'
+                                              : 'ML Server Offline — Local On-Device Fallback Active'))),
+                              style: TextStyle(
+                                color: isReady ? ItqanColors.correct : ItqanColors.warning,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: ItqanSpacing.xs),
+                    InkWell(
+                      onTap: () => _showServerConfigDialog(context, ref),
+                      borderRadius: BorderRadius.circular(ItqanRadius.sm),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.dns_rounded, size: 14, color: ItqanColors.mist),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Server Endpoint: ${ref.read(inferenceConfigProvider.notifier).serverUrl}',
+                                style: const TextStyle(color: ItqanColors.mist, fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const Icon(Icons.edit_rounded, size: 14, color: ItqanColors.gold),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ]),
           _sectionTitle(s, 'Offline Storage & Downloads'),
@@ -444,6 +528,73 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
   }
+
+  void _showServerConfigDialog(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(inferenceConfigProvider.notifier);
+    final controller = TextEditingController(text: notifier.serverUrl);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: ItqanColors.onyx,
+        title: const Text(
+          'ML Inference Server Endpoint',
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the URL of your local or remote ML server running server.py:',
+              style: TextStyle(color: ItqanColors.silver, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: ItqanColors.charcoal,
+                hintText: 'http://127.0.0.1:8000',
+                hintStyle: const TextStyle(color: ItqanColors.mist, fontSize: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              children: [
+                ActionChip(
+                  label: const Text('Desktop (127.0.0.1)', style: TextStyle(fontSize: 11)),
+                  onPressed: () => controller.text = 'http://127.0.0.1:8000',
+                ),
+                ActionChip(
+                  label: const Text('Android (10.0.2.2)', style: TextStyle(fontSize: 11)),
+                  onPressed: () => controller.text = 'http://10.0.2.2:8000',
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: ItqanColors.mist)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: ItqanColors.gold),
+            onPressed: () async {
+              await notifier.setServerUrl(controller.text);
+              if (ctx.mounted) Navigator.pop(ctx);
+              setState(() {});
+            },
+            child: const Text('Save', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SegmentedPicker extends StatelessWidget {
@@ -451,37 +602,63 @@ class _SegmentedPicker extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelect;
   final bool compact;
+  final bool scrollable;
 
   const _SegmentedPicker({
-    required this.options, required this.selected, required this.onSelect, this.compact = false,
+    required this.options,
+    required this.selected,
+    required this.onSelect,
+    this.compact = false,
+    this.scrollable = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-      children: options.map((o) {
-        final active = o == selected;
-        return Flexible(
-          flex: compact ? 0 : 1,
-          child: GestureDetector(
-            onTap: () => onSelect(o),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              margin: const EdgeInsets.only(right: 4),
-              decoration: BoxDecoration(
-                color: active ? ItqanColors.goldShimmer : ItqanColors.charcoal,
-                borderRadius: BorderRadius.circular(ItqanRadius.sm),
-                border: Border.all(color: active ? ItqanColors.gold : Colors.transparent),
-              ),
-              child: Text(o, style: TextStyle(
-                color: active ? ItqanColors.gold : ItqanColors.mist,
-                fontSize: 12, fontWeight: FontWeight.w600,
-              )),
+    final isScroll = scrollable || options.length > 3;
+
+    final items = options.map((o) {
+      final active = o == selected;
+      final item = GestureDetector(
+        onTap: () => onSelect(o),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          margin: const EdgeInsets.only(right: 6),
+          decoration: BoxDecoration(
+            color: active ? ItqanColors.goldShimmer : ItqanColors.charcoal,
+            borderRadius: BorderRadius.circular(ItqanRadius.sm),
+            border: Border.all(color: active ? ItqanColors.gold : Colors.transparent),
+          ),
+          child: Text(
+            o,
+            style: TextStyle(
+              color: active ? ItqanColors.gold : ItqanColors.mist,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        );
-      }).toList(),
+        ),
+      );
+
+      if (isScroll || compact) {
+        return item;
+      }
+      return Expanded(child: item);
+    }).toList();
+
+    if (isScroll) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: items,
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+      children: items,
     );
   }
 }

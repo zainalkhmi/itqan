@@ -235,7 +235,6 @@ void main() {
 
       final mistakeText = tester.widget<Text>(find.text('كلمة3'));
       expect(mistakeText.style?.color, const Color(0xFFEF4444));
-      expect(mistakeText.style?.decoration, TextDecoration.lineThrough);
 
       final correctText = tester.widget<Text>(find.text('كلمة4'));
       expect(correctText.style?.color, const Color(0xFF34D399));

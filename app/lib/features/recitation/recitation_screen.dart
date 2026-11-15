@@ -20,6 +20,9 @@ import 'widgets/waveform_visualizer.dart';
 import 'widgets/word_token.dart';
 import 'widgets/live_tracking_unmasking_card.dart';
 import 'widgets/surah_ayah_picker_sheet.dart';
+import '../settings/settings_service.dart';
+import '../scoring/services/inference_config_service.dart';
+import '../tajweed/tajweed_data.dart';
 
 enum HifzMode { off, liveUnmasking, blank, blur, firstLetter }
 
@@ -346,6 +349,9 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                   child: SingleChildScrollView(
                     child: Column(
                       children: [
+                        // Active AI Engine Pill
+                        _buildAiEnginePill(),
+
                         // Hifz mode toggle pills
                         _buildHifzModeSelector(),
                         const SizedBox(height: ItqanSpacing.md),
@@ -523,6 +529,48 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     );
   }
 
+  Widget _buildAiEnginePill() {
+    final mode = ref.watch(inferenceConfigProvider);
+    final settings = ref.watch(settingsProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final (label, icon, color) = switch (mode) {
+      InferenceMode.tajweedFormer => ('TajweedFormer V4', Icons.psychology_rounded, ItqanColors.correct),
+      InferenceMode.mlServer => ('Whisper AI', Icons.auto_awesome_rounded, ItqanColors.gold),
+      InferenceMode.onDevice => ('On-Device INT8 ONNX', Icons.memory_rounded, ItqanColors.info),
+      InferenceMode.acoustic => ('Acoustic Engine', Icons.graphic_eq_rounded, ItqanColors.mist),
+      InferenceMode.auto => ('AI Engine: Auto', Icons.auto_awesome, ItqanColors.gold),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: ItqanSpacing.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(ItqanRadius.full),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 5),
+            Text(
+              '$label • ${settings.scoringDifficulty.toUpperCase()}',
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHifzModeSelector() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
@@ -587,13 +635,98 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Widget _buildAyahTextDisplay() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final arabicTextColor = isDark ? ItqanColors.snow : ItqanColors.lightTextPrimary;
+    final settings = ref.watch(settingsProvider);
+    final data = ref.watch(recitationProvider);
+    final liveStates = data.liveWordStates;
+    final activeIndex = data.activeWordIndex;
+    final isRecording = data.state == RecitationState.recording;
 
     if (_isPeeking || _hifzMode == HifzMode.off) {
-      return Text(
-        _currentAyah.textUthmani,
-        style: ItqanTypography.arabicLarge.copyWith(color: arabicTextColor),
-        textAlign: TextAlign.center,
+      final words = _currentAyah.textUthmani.trim().split(RegExp(r'\s+'));
+      return Directionality(
         textDirection: TextDirection.rtl,
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 6,
+          runSpacing: 8,
+          children: words.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final word = entry.value;
+
+            // Determine word state for real-time background color
+            WordState wState = WordState.idle;
+            if (liveStates.containsKey(idx)) {
+              wState = liveStates[idx]!;
+            } else if (isRecording && idx == activeIndex) {
+              wState = WordState.active;
+            }
+
+            final key = '${_currentAyah.surahNumber}:${_currentAyah.ayahNumber}:$idx';
+            final rule = tajweedAnnotations[key];
+
+            Color bgColor = Colors.transparent;
+            Color textColor = rule != null && settings.tajweedOverlay ? tajweedColor(rule) : arabicTextColor;
+            Border? border;
+            List<BoxShadow>? shadows;
+
+            if (wState == WordState.correct) {
+              bgColor = const Color(0xFF10B981).withOpacity(0.30); // Realtime Green
+              textColor = const Color(0xFF34D399);
+              border = Border.all(color: const Color(0xFF10B981), width: 1.5);
+              shadows = [
+                BoxShadow(
+                  color: const Color(0xFF10B981).withOpacity(0.35),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ];
+            } else if (wState == WordState.error) {
+              bgColor = const Color(0xFFEF4444).withOpacity(0.35); // Realtime Red for Miss/Mistake
+              textColor = const Color(0xFFF87171);
+              border = Border.all(color: const Color(0xFFEF4444), width: 1.5);
+              shadows = [
+                BoxShadow(
+                  color: const Color(0xFFEF4444).withOpacity(0.35),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ];
+            } else if (wState == WordState.active) {
+              bgColor = ItqanColors.goldGlow;
+              textColor = ItqanColors.goldLight;
+              border = Border.all(color: ItqanColors.gold.withOpacity(0.8), width: 1.5);
+              shadows = [
+                BoxShadow(
+                  color: ItqanColors.gold.withOpacity(0.25),
+                  blurRadius: 6,
+                ),
+              ];
+            } else if (rule != null && settings.tajweedOverlay) {
+              bgColor = tajweedColor(rule).withOpacity(0.20);
+            }
+
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(8),
+                border: border,
+                boxShadow: shadows,
+              ),
+              child: Text(
+                word,
+                style: TextStyle(
+                  fontFamily: 'NotoNaskhArabic',
+                  fontSize: settings.fontSize,
+                  height: 2.0,
+                  color: textColor,
+                  fontWeight: wState != WordState.idle ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
       );
     }
 
@@ -604,7 +737,12 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
           children: [
             Text(
               '• • • • • • • • • • • • • • • •\n• • • • • • • • • • • •',
-              style: ItqanTypography.arabicLarge.copyWith(color: ItqanColors.mist.withOpacity(0.4), letterSpacing: 4),
+              style: TextStyle(
+                fontFamily: 'NotoNaskhArabic',
+                fontSize: settings.fontSize,
+                color: ItqanColors.mist.withOpacity(0.4),
+                letterSpacing: 4,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
@@ -622,7 +760,12 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
         imageFilter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Text(
           _currentAyah.textUthmani,
-          style: ItqanTypography.arabicLarge,
+          style: TextStyle(
+            fontFamily: 'NotoNaskhArabic',
+            fontSize: settings.fontSize,
+            height: 2.2,
+            color: arabicTextColor,
+          ),
           textAlign: TextAlign.center,
           textDirection: TextDirection.rtl,
         ),
@@ -638,7 +781,12 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
 
     return Text(
       masked,
-      style: ItqanTypography.arabicLarge.copyWith(color: ItqanColors.gold),
+      style: TextStyle(
+        fontFamily: 'NotoNaskhArabic',
+        fontSize: settings.fontSize,
+        height: 2.2,
+        color: ItqanColors.gold,
+      ),
       textAlign: TextAlign.center,
       textDirection: TextDirection.rtl,
     );
@@ -647,13 +795,27 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Widget _buildWordTokensDisplay() {
     if (_currentAyah.words.isEmpty) return const SizedBox.shrink();
 
+    final data = ref.watch(recitationProvider);
+    final settings = ref.watch(settingsProvider);
+    final liveStates = data.liveWordStates;
+    final activeIndex = data.activeWordIndex;
+    final isRecording = data.state == RecitationState.recording;
+
     if (_hifzMode == HifzMode.blank && !_isPeeking) {
       return Wrap(
         alignment: WrapAlignment.center,
         textDirection: TextDirection.rtl,
         spacing: ItqanSpacing.xs,
         runSpacing: ItqanSpacing.xs,
-        children: _currentAyah.words.map((w) {
+        children: _currentAyah.words.asMap().entries.map<Widget>((entry) {
+          final idx = entry.key;
+          final w = entry.value;
+          final state = liveStates[idx] ?? (isRecording && idx == activeIndex ? WordState.active : WordState.idle);
+
+          if (state == WordState.correct || state == WordState.error) {
+            return WordToken(word: w, state: state, fontSize: settings.fontSize);
+          }
+
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
@@ -672,8 +834,11 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
       textDirection: TextDirection.rtl,
       spacing: ItqanSpacing.xs,
       runSpacing: ItqanSpacing.xs,
-      children: _currentAyah.words.map((w) {
-        return WordToken(word: w, state: WordState.idle);
+      children: _currentAyah.words.asMap().entries.map<Widget>((entry) {
+        final idx = entry.key;
+        final w = entry.value;
+        final state = liveStates[idx] ?? (isRecording && idx == activeIndex ? WordState.active : WordState.idle);
+        return WordToken(word: w, state: state, fontSize: settings.fontSize);
       }).toList(),
     );
 

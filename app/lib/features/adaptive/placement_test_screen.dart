@@ -8,6 +8,8 @@ import '../../shared/widgets/score_ring.dart';
 import '../quran/models/ayah.dart';
 import '../scoring/scoring_service.dart';
 import '../scoring/models/score_result.dart';
+import '../scoring/services/inference_config_service.dart';
+import '../settings/settings_service.dart';
 import 'adaptive_service.dart';
 
 class PlacementTestScreen extends ConsumerStatefulWidget {
@@ -58,10 +60,14 @@ class _PlacementTestScreenState extends ConsumerState<PlacementTestScreen> {
     );
 
     try {
+      final inferenceMode = ref.read(inferenceConfigProvider);
+      final settings = ref.read(settingsProvider);
       final res = await _scorer.scoreRecording(
         audioPath: 'placement_test_audio.wav',
         ayah: testAyah,
         recordingDuration: const Duration(milliseconds: 3200),
+        mode: inferenceMode,
+        scoringDifficulty: settings.scoringDifficulty,
       );
       if (mounted) {
         setState(() {

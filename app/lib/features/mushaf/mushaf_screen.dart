@@ -206,12 +206,12 @@ class _AyahListScreenState extends ConsumerState<_AyahListScreen> {
                     ),
                     const SizedBox(height: ItqanSpacing.sm),
                     _tajweedEnabled
-                        ? _TajweedAyahText(surahNum: surah.number, ayah: ayah)
+                        ? _TajweedAyahText(surahNum: surah.number, ayah: ayah, fontSize: settings.fontSize)
                         : Text(
                             ayah.textUthmani,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'NotoNaskhArabic',
-                              fontSize: 22,
+                              fontSize: settings.fontSize,
                               height: 2.0,
                               color: ItqanColors.snow,
                             ),
@@ -243,7 +243,8 @@ class _AyahListScreenState extends ConsumerState<_AyahListScreen> {
 class _TajweedAyahText extends StatelessWidget {
   final int surahNum;
   final Ayah ayah;
-  const _TajweedAyahText({required this.surahNum, required this.ayah});
+  final double fontSize;
+  const _TajweedAyahText({required this.surahNum, required this.ayah, this.fontSize = 22});
 
   @override
   Widget build(BuildContext context) {
@@ -255,7 +256,7 @@ class _TajweedAyahText extends StatelessWidget {
         runSpacing: 4,
         children: words.asMap().entries.map((entry) {
           final word = entry.value;
-          final key = '\$surahNum:\${ayah.ayahNumber}:\${entry.key}';
+          final key = '$surahNum:${ayah.ayahNumber}:${entry.key}';
           final rule = tajweedAnnotations[key];
           return Container(
             padding: rule != null ? const EdgeInsets.symmetric(horizontal: 3, vertical: 1) : EdgeInsets.zero,
@@ -269,7 +270,7 @@ class _TajweedAyahText extends StatelessWidget {
               word,
               style: TextStyle(
                 fontFamily: 'NotoNaskhArabic',
-                fontSize: 22,
+                fontSize: fontSize,
                 height: 2.0,
                 color: rule != null ? tajweedColor(rule) : ItqanColors.snow,
               ),

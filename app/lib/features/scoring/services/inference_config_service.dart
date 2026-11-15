@@ -30,9 +30,20 @@ final inferenceConfigProvider = StateNotifierProvider<InferenceConfigNotifier, I
 });
 
 class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
+  String _serverUrl = defaultServerUrl;
+
   InferenceConfigNotifier() : super(InferenceMode.auto) {
     _load();
   }
+
+  static String get defaultServerUrl {
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://127.0.0.1:8000';
+  }
+
+  String get serverUrl => _serverUrl;
 
   Future<void> _load() async {
     try {
@@ -41,6 +52,7 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
       }
       final box = Hive.box('inference_config');
       final val = box.get('mode', defaultValue: 'auto') as String;
+      _serverUrl = box.get('server_url', defaultValue: defaultServerUrl) as String;
       state = switch (val) {
         'tajweedFormer' => InferenceMode.tajweedFormer,
         'onDevice' => InferenceMode.onDevice,
@@ -62,6 +74,17 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
     } catch (_) {}
   }
 
+  Future<void> setServerUrl(String url) async {
+    _serverUrl = url.trim();
+    try {
+      if (!Hive.isBoxOpen('inference_config')) {
+        await Hive.openBox('inference_config');
+      }
+      final box = Hive.box('inference_config');
+      await box.put('server_url', _serverUrl);
+    } catch (_) {}
+  }
+
   Future<InferenceEngineStatus> checkStatus() async {
     bool serverOnline = false;
     bool tajweedFormerAvailable = false;
@@ -73,7 +96,7 @@ class InferenceConfigNotifier extends StateNotifier<InferenceMode> {
     final stopwatch = Stopwatch()..start();
     try {
       final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 2)));
-      final res = await dio.get('http://127.0.0.1:8000/health');
+      final res = await dio.get('$_serverUrl/health');
       stopwatch.stop();
       if (res.statusCode == 200 && res.data is Map) {
         serverOnline = true;

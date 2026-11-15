@@ -22,6 +22,8 @@ import '../tajweed/services/tajweed_service.dart';
 import '../scoring/models/score_result.dart';
 import '../scoring/scoring_service.dart';
 import '../scoring/widgets/mistakes_sheet.dart';
+import '../settings/settings_service.dart';
+import '../scoring/services/inference_config_service.dart';
 
 // ─── Providers ───────────────────────────────────────────────────────────────
 
@@ -70,6 +72,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   List<RecitationMistake> _liveMistakes = [];
   final Set<String> _mistakeWordKeys = {};
   final Set<String> _correctWordKeys = {};
+  String? _activeVerseKey;
+  String? _activeWordKey;
 
   @override
   void initState() {
@@ -140,6 +144,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     setState(() {
       _isLiveReciting = true;
       _recitingSeconds = 0;
+      _activeVerseKey = null;
+      _activeWordKey = null;
       _liveMistakes = [];
       _mistakeWordKeys.clear();
       _correctWordKeys.clear();
@@ -178,6 +184,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     if (mounted) {
       setState(() {
         _isLiveReciting = false;
+        _activeVerseKey = null;
+        _activeWordKey = null;
       });
     }
   }
@@ -193,11 +201,16 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     }
     if (allWords.isEmpty) return;
 
-    final wordsRecited = (_recitingSeconds * 0.8).floor().clamp(0, allWords.length);
-    if (wordsRecited == 0) return;
+    // Track active word with high precision kata-per-kata
+    final activeIndex = (_recitingSeconds * 0.85).floor().clamp(0, allWords.length - 1);
+    final activeWord = allWords[activeIndex];
+    final activeKey = '${activeWord.verseKey}:${activeWord.position}';
 
     setState(() {
-      for (int i = 0; i < wordsRecited; i++) {
+      _activeVerseKey = activeWord.verseKey;
+      _activeWordKey = activeKey;
+
+      for (int i = 0; i <= activeIndex; i++) {
         final w = allWords[i];
         final key = '${w.verseKey}:${w.position}';
         if (!_mistakeWordKeys.contains(key)) {
@@ -234,10 +247,14 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       );
 
       try {
+        final inferenceMode = ref.read(inferenceConfigProvider);
+        final settings = ref.read(settingsProvider);
         final scoreResult = await scorer.scoreRecording(
           audioPath: audioPath ?? '',
           ayah: ayah,
           recordingDuration: duration,
+          mode: inferenceMode,
+          scoringDifficulty: settings.scoringDifficulty,
         );
 
         for (final m in scoreResult.mistakes) {
@@ -802,6 +819,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
                     edition: _edition,
                     mistakeWordKeys: page == _currentPage ? _mistakeWordKeys : null,
                     correctWordKeys: page == _currentPage ? _correctWordKeys : null,
+                    activeVerseKey: page == _currentPage ? _activeVerseKey : null,
+                    activeWordKey: page == _currentPage ? _activeWordKey : null,
                   );
                 },
               ),
@@ -816,8 +835,8 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   }
 
   Widget _buildFloatingRecitationBar(bool isDark) {
-    final barBg = isDark ? const Color(0xFF1E1E24) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF2E2E38) : ItqanColors.lightBorder;
+    final barBg = isDark ? const Color(0xFF1E1E24) : const Color(0xFFECFDF5);
+    final borderColor = isDark ? const Color(0xFF2E2E38) : const Color(0xFFA7F3D0);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 10),
@@ -1130,6 +1149,8 @@ class _MushafPage extends ConsumerWidget {
   final MushafEdition edition;
   final Set<String>? mistakeWordKeys;
   final Set<String>? correctWordKeys;
+  final String? activeVerseKey;
+  final String? activeWordKey;
 
   const _MushafPage({
     required this.pageNumber,
@@ -1140,6 +1161,8 @@ class _MushafPage extends ConsumerWidget {
     this.edition = MushafEdition.madinah15Lines,
     this.mistakeWordKeys,
     this.correctWordKeys,
+    this.activeVerseKey,
+    this.activeWordKey,
   });
 
   @override
@@ -1184,6 +1207,8 @@ class _MushafPage extends ConsumerWidget {
             showTajweed: showTajweed,
             mistakeWordKeys: mistakeWordKeys,
             correctWordKeys: correctWordKeys,
+            activeVerseKey: activeVerseKey,
+            activeWordKey: activeWordKey,
           );
         }
 

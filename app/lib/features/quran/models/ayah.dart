@@ -65,13 +65,24 @@ class Ayah {
     );
   }
 
-  String get audioUrl {
+  String getAudioUrlForQari(String qari) {
     final s = surahNumber > 0 ? surahNumber : 1;
     final a = ayahNumber > 0 ? ayahNumber : 1;
     final surahPadded = s.toString().padLeft(3, '0');
     final ayahPadded = a.toString().padLeft(3, '0');
-    return 'https://verses.quran.com/Alafasy/mp3/$surahPadded$ayahPadded.mp3';
+    switch (qari.toLowerCase()) {
+      case 'abdulbasit':
+        return 'https://verses.quran.com/AbdulBaset/Murattal/mp3/$surahPadded$ayahPadded.mp3';
+      case 'alhusary':
+      case 'husary':
+        return 'https://verses.quran.com/Husary/128/mp3/$surahPadded$ayahPadded.mp3';
+      case 'alafasy':
+      default:
+        return 'https://verses.quran.com/Alafasy/mp3/$surahPadded$ayahPadded.mp3';
+    }
   }
+
+  String get audioUrl => getAudioUrlForQari('alafasy');
 
   Map<String, dynamic> toJson() {
     return {

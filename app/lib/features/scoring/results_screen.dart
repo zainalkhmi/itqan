@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:itqan/l10n/app_localizations.dart';
-import '../../core/extensions/context_extensions.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/spacing.dart';
 import '../../core/theme/typography.dart';
@@ -32,8 +31,6 @@ class ResultsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : ItqanColors.lightTextPrimary;
-    final cardBg = isDark ? ItqanColors.onyx : Colors.white;
-    final borderColor = isDark ? ItqanColors.charcoal : ItqanColors.lightBorder;
     final mistakes = result.wordScores.where((w) => w.error != null).toList();
 
     return Scaffold(
@@ -55,47 +52,48 @@ class ResultsScreen extends StatelessWidget {
               ),
               if (result.aiModel != null) ...[
                 const SizedBox(height: ItqanSpacing.xs),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: result.aiModel!.toLowerCase().contains('tajweedformer')
-                        ? ItqanColors.correct.withOpacity(0.15)
-                        : (result.aiModel!.contains('whisper') ? ItqanColors.gold.withOpacity(0.15) : ItqanColors.charcoal),
-                    borderRadius: BorderRadius.circular(ItqanRadius.full),
-                    border: Border.all(
-                      color: result.aiModel!.toLowerCase().contains('tajweedformer')
-                          ? ItqanColors.correct
-                          : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist.withOpacity(0.3)),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        result.aiModel!.toLowerCase().contains('tajweedformer')
-                            ? Icons.psychology_rounded
-                            : (result.aiModel!.contains('whisper') ? Icons.auto_awesome : Icons.graphic_eq),
-                        size: 14,
-                        color: result.aiModel!.toLowerCase().contains('tajweedformer')
-                            ? ItqanColors.correct
-                            : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        result.aiModel!.toLowerCase().contains('tajweedformer')
-                            ? 'TajweedFormer V4 (Quran Lab)'
-                            : (result.aiModel!.contains('whisper') ? 'Whisper AI Quran Engine' : 'On-Device Acoustic Engine'),
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: result.aiModel!.toLowerCase().contains('tajweedformer')
-                              ? ItqanColors.correct
-                              : (result.aiModel!.contains('whisper') ? ItqanColors.gold : ItqanColors.mist),
+                Builder(
+                  builder: (context) {
+                    final modelStr = result.aiModel!.toLowerCase();
+                    final isTajweed = modelStr.contains('tajweedformer');
+                    final isWhisper = modelStr.contains('whisper');
+                    final isOnDeviceOnnx = modelStr.contains('onnx') || modelStr.contains('mobile c++');
+
+                    final badgeColor = isTajweed
+                        ? ItqanColors.correct
+                        : (isWhisper ? ItqanColors.gold : (isOnDeviceOnnx ? ItqanColors.info : ItqanColors.mist));
+
+                    final badgeIcon = isTajweed
+                        ? Icons.psychology_rounded
+                        : (isWhisper ? Icons.auto_awesome : (isOnDeviceOnnx ? Icons.memory_rounded : Icons.graphic_eq));
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(ItqanRadius.full),
+                        border: Border.all(
+                          color: badgeColor.withOpacity(0.5),
+                          width: 1,
                         ),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(badgeIcon, size: 14, color: badgeColor),
+                          const SizedBox(width: 6),
+                          Text(
+                            result.aiModel!,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: badgeColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ],
               if (result.hifzMode != null) ...[
