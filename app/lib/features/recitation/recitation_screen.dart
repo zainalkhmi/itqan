@@ -313,8 +313,18 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             ),
           ),
         ),
-        actions: const [
-          SizedBox(width: 48), // Balances leading back button
+        actions: [
+          IconButton(
+            icon: Icon(Icons.chevron_left_rounded, color: hasPrev ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
+            tooltip: 'Previous Ayah',
+            onPressed: hasPrev ? _prevAyah : null,
+          ),
+          IconButton(
+            icon: Icon(Icons.chevron_right_rounded, color: hasNext ? (isDark ? ItqanColors.gold : ItqanColors.goldDeep) : secondaryTextColor),
+            tooltip: 'Next Ayah',
+            onPressed: hasNext ? _nextAyah : null,
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(
@@ -534,16 +544,7 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                   child: Text(data.error!, style: const TextStyle(color: ItqanColors.error)),
                 ),
 
-              const SizedBox(height: ItqanSpacing.md),
-
-              // ── Colorful Ayah Navigation Bar (Above Recitation Button) ──
-              _buildColorfulAyahNavigation(
-                hasPrev: hasPrev,
-                hasNext: hasNext,
-                isDark: isDark,
-              ),
-
-              const SizedBox(height: ItqanSpacing.md),
+              const SizedBox(height: ItqanSpacing.lg),
 
               // Controls
               Row(
@@ -620,17 +621,13 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             children: [
               Icon(icon, size: 12, color: color),
               const SizedBox(width: 5),
-              Flexible(
-                child: Text(
-                  '$label • ${settings.scoringDifficulty.toUpperCase()}',
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              Text(
+                '$label • ${settings.scoringDifficulty.toUpperCase()}',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
                 ),
               ),
             ],
@@ -859,116 +856,6 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
 
     return tokensWidget;
   }
-
-  Widget _buildColorfulAyahNavigation({
-    required bool hasPrev,
-    required bool hasNext,
-    required bool isDark,
-  }) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E28) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: isDark ? const Color(0xFF2E2E3E) : const Color(0xFFE2E8F0),
-          width: 1.2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(isDark ? 0.35 : 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ColorfulNavButton(
-              label: 'Previous',
-              icon: Icons.chevron_left_rounded,
-              iconLeft: true,
-              isEnabled: hasPrev,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              shadowColor: const Color(0xFF6366F1).withOpacity(0.4),
-              onTap: hasPrev ? _prevAyah : null,
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              SurahAyahPickerSheet.show(
-                context,
-                currentSurahNumber: _currentSurahNumber,
-                currentAyahNumber: _currentAyah.ayahNumber,
-                onSelected: (sNum, aNum) {
-                  _loadSurah(sNum, targetAyahNumber: aNum);
-                },
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFF59E0B).withOpacity(0.45),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.auto_stories_rounded, color: Colors.white, size: 14),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Ayah ${_currentAyah.ayahNumber}${_surahAyahs.isNotEmpty ? ' / ${_surahAyahs.length}' : ''}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const SizedBox(width: 3),
-                  const Icon(Icons.unfold_more_rounded, color: Colors.white70, size: 13),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _ColorfulNavButton(
-              label: 'Next',
-              icon: Icons.chevron_right_rounded,
-              iconLeft: false,
-              isEnabled: hasNext,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF10B981), Color(0xFF059669)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-              ),
-              shadowColor: const Color(0xFF10B981).withOpacity(0.4),
-              onTap: hasNext ? _nextAyah : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ControlButton extends StatelessWidget {
@@ -1017,83 +904,6 @@ class _ControlButton extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ColorfulNavButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool iconLeft;
-  final bool isEnabled;
-  final Gradient gradient;
-  final Color shadowColor;
-  final VoidCallback? onTap;
-
-  const _ColorfulNavButton({
-    required this.label,
-    required this.icon,
-    required this.iconLeft,
-    required this.isEnabled,
-    required this.gradient,
-    required this.shadowColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: isEnabled ? 1.0 : 0.4,
-      child: GestureDetector(
-        onTap: isEnabled ? onTap : null,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            gradient: isEnabled
-                ? gradient
-                : LinearGradient(
-                    colors: [Colors.grey.shade600, Colors.grey.shade700],
-                  ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: isEnabled
-                ? [
-                    BoxShadow(
-                      color: shadowColor,
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (iconLeft) ...[
-                Icon(icon, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    letterSpacing: 0.3,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (!iconLeft) ...[
-                const SizedBox(width: 4),
-                Icon(icon, color: Colors.white, size: 16),
-              ],
-            ],
-          ),
-        ),
       ),
     );
   }
