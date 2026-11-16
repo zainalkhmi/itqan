@@ -11,12 +11,15 @@ class WordToken extends StatelessWidget {
 
   const WordToken({super.key, required this.word, this.state = WordState.idle, this.onTap});
 
+  static const Color correctBlue = Color(0xFF3B82F6);
+  static const Color errorRed = Color(0xFFEF4444);
+
   Color get _bgColor {
     return switch (state) {
       WordState.active => ItqanColors.goldGlow,
-      WordState.correct => ItqanColors.correct.withOpacity(0.15),
+      WordState.correct => correctBlue.withOpacity(0.18),
       WordState.warning => ItqanColors.warning.withOpacity(0.15),
-      WordState.error => ItqanColors.error.withOpacity(0.15),
+      WordState.error => errorRed.withOpacity(0.18),
       WordState.idle => Colors.transparent,
     };
   }
@@ -24,9 +27,9 @@ class WordToken extends StatelessWidget {
   Color get _textColor {
     return switch (state) {
       WordState.active => ItqanColors.goldLight,
-      WordState.correct => ItqanColors.correct,
+      WordState.correct => correctBlue,
       WordState.warning => ItqanColors.warning,
-      WordState.error => ItqanColors.error,
+      WordState.error => errorRed,
       WordState.idle => ItqanColors.snow,
     };
   }
@@ -43,7 +46,11 @@ class WordToken extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           border: state == WordState.active
               ? Border.all(color: ItqanColors.gold.withOpacity(0.5))
-              : null,
+              : (state == WordState.correct
+                  ? Border.all(color: correctBlue.withOpacity(0.7), width: 1.2)
+                  : (state == WordState.error
+                      ? Border.all(color: errorRed.withOpacity(0.7), width: 1.2)
+                      : null)),
         ),
         child: Text(
           word.textUthmani,

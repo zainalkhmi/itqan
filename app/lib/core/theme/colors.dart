@@ -15,22 +15,30 @@ class ItqanColors {
   static const Color snow = Color(0xFFEEEEF5);
   static const Color white = Color(0xFFFAFAFF);
 
-  // Light Neutral Scale (Tarteel-Style)
-  static const Color lightBackground = Color(0xFFF8FAFC);
+  // Light Neutral Scale (Ngaji AI Islamic Emerald Palette)
+  static const Color lightBackground = Color(0xFFF2FBF6);
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightCard = Color(0xFFFFFFFF);
-  static const Color lightBorder = Color(0xFFE2E8F0);
-  static const Color lightDivider = Color(0xFFCBD5E1);
-  static const Color lightTextPrimary = Color(0xFF0F172A);
-  static const Color lightTextSecondary = Color(0xFF475569);
-  static const Color lightTextMuted = Color(0xFF94A3B8);
+  static const Color lightBorder = Color(0xFFA7F3D0);
+  static const Color lightDivider = Color(0xFFCCFBF1);
+  static const Color lightTextPrimary = Color(0xFF064E3B);
+  static const Color lightTextSecondary = Color(0xFF0F766E);
+  static const Color lightTextMuted = Color(0xFF64748B);
+
+  // Ngaji AI Brand Palette
+  static const Color ngajiEmerald = Color(0xFF0F766E);
+  static const Color ngajiEmeraldDark = Color(0xFF064E3B);
+  static const Color ngajiEmeraldLight = Color(0xFF0D9488);
+  static const Color ngajiMintSoft = Color(0xFFE6F4EA);
+  static const Color ngajiGold = Color(0xFFF59E0B);
+  static const Color ngajiGoldLight = Color(0xFFFBBF24);
 
   // Gold & Accents
-  static const Color goldDeep = Color(0xFF8B6914);
-  static const Color gold = Color(0xFFC9982E);
-  static const Color goldLight = Color(0xFFE8C066);
-  static const Color goldGlow = Color(0x26C9982E);
-  static const Color goldShimmer = Color(0x14C9982E);
+  static const Color goldDeep = Color(0xFFD97706);
+  static const Color gold = Color(0xFFF59E0B);
+  static const Color goldLight = Color(0xFFFBBF24);
+  static const Color goldGlow = Color(0x26F59E0B);
+  static const Color goldShimmer = Color(0x14F59E0B);
 
   // Feedback & Mistake Highlighting (Tarteel v5.17 Standard)
   static const Color correct = Color(0xFF34D399);

@@ -78,9 +78,8 @@ class WordScore {
       case MistakeType.tajweed:
         return const Color(0xFFFBBF24);
       case MistakeType.none:
-        if (score >= 0.85) return const Color(0xFF10B981);
-        if (score >= 0.65) return const Color(0xFFFBBF24);
-        return const Color(0xFFEF4444);
+        if (score >= 0.70) return const Color(0xFF3B82F6); // Biru jika benar
+        return const Color(0xFFEF4444); // Merah jika salah
     }
   }
 }
@@ -100,6 +99,7 @@ class ScoreResult {
   final String? hifzMode;
   final int peeksUsed;
   final Map<String, dynamic>? tajweedFormerDetails;
+  final String? audioPath;
 
   const ScoreResult({
     required this.overall,
@@ -116,6 +116,7 @@ class ScoreResult {
     this.hifzMode,
     this.peeksUsed = 0,
     this.tajweedFormerDetails,
+    this.audioPath,
   });
 
   ScoreResult copyWith({
@@ -133,6 +134,7 @@ class ScoreResult {
     String? hifzMode,
     int? peeksUsed,
     Map<String, dynamic>? tajweedFormerDetails,
+    String? audioPath,
   }) {
     return ScoreResult(
       overall: overall ?? this.overall,
@@ -149,6 +151,7 @@ class ScoreResult {
       hifzMode: hifzMode ?? this.hifzMode,
       peeksUsed: peeksUsed ?? this.peeksUsed,
       tajweedFormerDetails: tajweedFormerDetails ?? this.tajweedFormerDetails,
+      audioPath: audioPath ?? this.audioPath,
     );
   }
 

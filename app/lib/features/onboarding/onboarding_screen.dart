@@ -123,32 +123,141 @@ class _WelcomePage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Islamic pattern placeholder
-            CustomPaint(size: const Size(160, 160), painter: _IslamicPatternPainter()),
-            const SizedBox(height: ItqanSpacing.xl),
+            // Mushaf Al-Quran emblem from Ngaji AI
+            Container(
+              width: 156,
+              height: 156,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(36),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F766E).withOpacity(0.45),
+                    blurRadius: 24,
+                    spreadRadius: 2,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: ItqanColors.gold.withOpacity(0.35),
+                    blurRadius: 32,
+                    spreadRadius: -2,
+                  ),
+                ],
+                border: Border.all(color: ItqanColors.gold, width: 2.2),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(34),
+                child: Image.asset(
+                  'assets/images/ngaji_icon.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFF064E3B),
+                    child: const Center(
+                      child: Icon(Icons.menu_book_rounded, color: ItqanColors.gold, size: 76),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: ItqanSpacing.lg),
+
+            // Arabic Mushaf title
             const Text(
-              'إتقان',
-              style: TextStyle(fontFamily: 'Amiri', fontSize: 64, color: ItqanColors.gold, height: 1.4),
+              'الْقُرْآنُ الْكَرِيمُ',
+              style: TextStyle(
+                fontFamily: 'Amiri',
+                fontSize: 48,
+                color: ItqanColors.gold,
+                height: 1.3,
+                fontWeight: FontWeight.bold,
+              ),
               textDirection: TextDirection.rtl,
             ),
-            const Text('Itqan', style: TextStyle(fontFamily: 'Inter', fontSize: 24, color: ItqanColors.mist)),
-            const SizedBox(height: ItqanSpacing.sm),
-            Builder(builder: (ctx) => Text(
-              AppLocalizations.of(ctx)?.onboardingWelcomeSubtitle ?? 'Master Quran recitation with AI-powered feedback',
-              style: const TextStyle(fontSize: 16, color: ItqanColors.silver),
-              textAlign: TextAlign.center,
-            )),
+            const SizedBox(height: 4),
+
+            // Ngaji AI Brand Title
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  'Ngaji',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFBBF24), Color(0xFFD97706)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFF59E0B).withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    'AI',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF064E3B),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: ItqanSpacing.md),
+
+            // Subtitle
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'Belajar & Sempurnakan Bacaan Al-Qur\'an dengan AI',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: ItqanColors.silver,
+                  height: 1.4,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
             const SizedBox(height: ItqanSpacing.xxl),
+
+            // Vibrant Emerald & Gold Forward Button
             GestureDetector(
               onTap: onNext,
               child: Container(
-                width: 56, height: 56,
+                width: 60,
+                height: 60,
                 decoration: BoxDecoration(
-                  color: ItqanColors.goldShimmer,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0F766E), Color(0xFF047857)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   shape: BoxShape.circle,
-                  border: Border.all(color: ItqanColors.gold),
+                  border: Border.all(color: ItqanColors.gold, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F766E).withOpacity(0.5),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.arrow_forward_rounded, color: ItqanColors.gold),
+                child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 28),
               ),
             ),
           ],

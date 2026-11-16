@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:itqan/core/theme/colors.dart';
 import '../models/mushaf_layout.dart';
 import '../services/mushaf_layout_service.dart';
@@ -6,6 +7,7 @@ import '../../recitation/recitation_screen.dart';
 import '../../quran/services/quran_service.dart';
 import '../../quran/models/ayah.dart';
 import '../../tajweed/services/tajweed_service.dart';
+import '../../offline/services/audio_download_service.dart';
 
 class Mushaf15LineView extends StatefulWidget {
   final MushafPageLayout layout;
@@ -39,12 +41,85 @@ class Mushaf15LineView extends StatefulWidget {
 
 class _Mushaf15LineViewState extends State<Mushaf15LineView> {
   final Set<String> _revealedWordKeys = {};
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  String? _currentlyPlayingVerseKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.playerStateStream.listen((ps) {
+      if (ps.processingState == ProcessingState.completed) {
+        if (mounted) {
+          setState(() {
+            _currentlyPlayingVerseKey = null;
+          });
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(Mushaf15LineView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!widget.isHifzMode && oldWidget.isHifzMode) {
       _revealedWordKeys.clear();
+    }
+  }
+
+  Future<void> _playAyahAudio(String verseKey) async {
+    final parts = verseKey.split(':');
+    if (parts.length != 2) return;
+    final surahNum = int.tryParse(parts[0]) ?? 1;
+    final ayahNum = int.tryParse(parts[1]) ?? 1;
+
+    if (_currentlyPlayingVerseKey == verseKey && _audioPlayer.playing) {
+      await _audioPlayer.stop();
+      if (mounted) setState(() => _currentlyPlayingVerseKey = null);
+      return;
+    }
+
+    try {
+      setState(() {
+        _currentlyPlayingVerseKey = verseKey;
+      });
+
+      final audioService = AudioDownloadService();
+      await audioService.init();
+
+      final isDownloaded = audioService.isAyahAudioDownloaded(surahNum, ayahNum);
+      if (isDownloaded) {
+        final localPath = audioService.getLocalAudioPath(surahNum, ayahNum);
+        if (localPath != null) {
+          await _audioPlayer.setFilePath(localPath);
+        } else {
+          final cdnUrl = audioService.getCdnUrl(surahNum, ayahNum);
+          await _audioPlayer.setUrl(cdnUrl);
+        }
+      } else {
+        final cdnUrl = audioService.getCdnUrl(surahNum, ayahNum);
+        await _audioPlayer.setUrl(cdnUrl);
+      }
+
+      await _audioPlayer.play();
+    } catch (e) {
+      debugPrint('[Mushaf15LineView] Play ayah audio error: $e');
+      if (mounted) {
+        setState(() => _currentlyPlayingVerseKey = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Audio recitation error: $e'),
+            backgroundColor: ItqanColors.mistakeIncorrect,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -299,7 +374,8 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         (widget.correctWordKeys!.contains(key) ||
          widget.correctWordKeys!.contains(locationKey));
 
-    final isActiveAyah = widget.activeVerseKey == word.verseKey;
+    final isCurrentlyPlaying = _currentlyPlayingVerseKey == word.verseKey;
+    final isActiveAyah = widget.activeVerseKey == word.verseKey || isCurrentlyPlaying;
     final isActiveWord = widget.activeWordKey == key || widget.activeWordKey == locationKey;
 
     final tajweedTokens = widget.showTajweed && isRevealed
@@ -307,9 +383,9 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         : <TajweedToken>[];
     final hasTajweed = tajweedTokens.isNotEmpty;
     final primaryColor = isMistake
-        ? ItqanColors.mistakeIncorrect
+        ? const Color(0xFFEF4444)
         : (isCorrect
-            ? ItqanColors.correct
+            ? const Color(0xFF3B82F6)
             : (hasTajweed ? tajweedTokens.first.rule.color : defaultWordColor));
 
     return GestureDetector(
@@ -317,14 +393,15 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         if (widget.isHifzMode) {
           _toggleWordReveal(word);
         } else {
-          _showWordSheet(word);
+          // Play recitation audio for this Ayah (like Tarteel AI)!
+          _playAyahAudio(word.verseKey);
         }
       },
       onLongPress: () {
         if (widget.onAyahSelected != null) {
           widget.onAyahSelected!(word.verseKey);
         } else {
-          _openRecitationForAyah(word.verseKey);
+          _showWordSheet(word);
         }
       },
       child: Container(
@@ -332,21 +409,23 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           color: isMistake
-              ? ItqanColors.mistakeIncorrect.withOpacity(0.14)
+              ? const Color(0xFFEF4444).withOpacity(0.18)
               : (isActiveWord
                   ? ItqanColors.gold.withOpacity(0.22)
                   : (isCorrect
-                      ? ItqanColors.correct.withOpacity(0.12)
+                      ? const Color(0xFF3B82F6).withOpacity(0.18)
                       : (isActiveAyah
                           ? (isDark ? const Color(0x2A3F3F46) : const Color(0x182563EB))
                           : (widget.isHifzMode && !isRevealed
                               ? (isDark ? ItqanColors.charcoal.withValues(alpha: 0.5) : const Color(0xFFF1F5F9))
                               : Colors.transparent)))),
           border: isMistake
-              ? Border.all(color: ItqanColors.mistakeIncorrect.withOpacity(0.55), width: 1.0)
-              : (isActiveWord
-                  ? Border.all(color: ItqanColors.gold, width: 1.0)
-                  : null),
+              ? Border.all(color: const Color(0xFFEF4444), width: 1.2)
+              : (isCorrect
+                  ? Border.all(color: const Color(0xFF3B82F6), width: 1.2)
+                  : (isActiveWord
+                      ? Border.all(color: ItqanColors.gold, width: 1.0)
+                      : null)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -549,6 +628,32 @@ class _Mushaf15LineViewState extends State<Mushaf15LineView> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: ItqanColors.gold),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: Icon(
+                          _currentlyPlayingVerseKey == word.verseKey && _audioPlayer.playing
+                              ? Icons.stop_rounded
+                              : Icons.volume_up_rounded,
+                          color: ItqanColors.gold,
+                          size: 20,
+                        ),
+                        label: Text(
+                          _currentlyPlayingVerseKey == word.verseKey && _audioPlayer.playing
+                              ? 'Hentikan Suara'
+                              : 'Dengar Suara Qari',
+                          style: const TextStyle(color: ItqanColors.gold, fontWeight: FontWeight.bold),
+                        ),
+                        onPressed: () {
+                          _playAyahAudio(word.verseKey);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(

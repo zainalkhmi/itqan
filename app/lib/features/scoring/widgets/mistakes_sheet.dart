@@ -8,17 +8,20 @@ import '../models/score_result.dart';
 class MistakesSheet extends StatelessWidget {
   final List<RecitationMistake> mistakes;
   final VoidCallback? onPracticeAyah;
+  final VoidCallback? onClear;
 
   const MistakesSheet({
     super.key,
     required this.mistakes,
     this.onPracticeAyah,
+    this.onClear,
   });
 
   static Future<void> show(
     BuildContext context, {
     required List<RecitationMistake> mistakes,
     VoidCallback? onPracticeAyah,
+    VoidCallback? onClear,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -32,6 +35,7 @@ class MistakesSheet extends StatelessWidget {
       builder: (_) => MistakesSheet(
         mistakes: mistakes,
         onPracticeAyah: onPracticeAyah,
+        onClear: onClear,
       ),
     );
   }
@@ -99,9 +103,32 @@ class MistakesSheet extends StatelessWidget {
                     ),
                   ],
                 ),
-                IconButton(
-                  icon: Icon(Icons.close_rounded, color: secondaryTextColor, size: 22),
-                  onPressed: () => Navigator.pop(context),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (onClear != null && mistakes.isNotEmpty) ...[
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFEF4444),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          onClear!();
+                        },
+                        icon: const Icon(Icons.delete_sweep_rounded, size: 16),
+                        label: const Text(
+                          'Hapus Tanda',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, color: secondaryTextColor, size: 22),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
               ],
             ),

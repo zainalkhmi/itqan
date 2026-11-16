@@ -37,7 +37,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Page 0: Welcome page
-      expect(find.text('Itqan'), findsOneWidget);
+      expect(find.text('Ngaji'), findsOneWidget);
       // Tap arrow icon to go to Level page
       await tester.tap(find.byIcon(Icons.arrow_forward_rounded));
       await tester.pumpAndSettle();

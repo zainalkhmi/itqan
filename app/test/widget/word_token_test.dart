@@ -32,7 +32,7 @@ void main() {
       expect(find.byType(WordToken), findsOneWidget);
     });
 
-    testWidgets('renders in correct state with green color', (tester) async {
+    testWidgets('renders in correct state with blue color', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -40,9 +40,9 @@ void main() {
           ),
         ),
       );
-      // Find the Text widget and check its color
+      // Find the Text widget and check its color (blue for correct)
       final text = tester.widget<Text>(find.text('بِسْمِ'));
-      expect(text.style?.color, equals(ItqanColors.correct));
+      expect(text.style?.color, equals(WordToken.correctBlue));
     });
 
     testWidgets('renders in error state with red color', (tester) async {
@@ -54,7 +54,7 @@ void main() {
         ),
       );
       final text = tester.widget<Text>(find.text('بِسْمِ'));
-      expect(text.style?.color, equals(ItqanColors.error));
+      expect(text.style?.color, equals(WordToken.errorRed));
     });
 
     testWidgets('renders in warning state with warning color', (tester) async {

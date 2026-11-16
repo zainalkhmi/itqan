@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -22,6 +23,7 @@ class RecitationData {
   final String? error;
   final bool isSpeaking;
   final List<double>? recentWaveform;
+  final String? currentRecordingPath;
 
   const RecitationData({
     this.state = RecitationState.idle,
@@ -31,6 +33,7 @@ class RecitationData {
     this.error,
     this.isSpeaking = false,
     this.recentWaveform,
+    this.currentRecordingPath,
   });
 
   RecitationData copyWith({
@@ -41,6 +44,7 @@ class RecitationData {
     String? error,
     bool? isSpeaking,
     List<double>? recentWaveform,
+    String? currentRecordingPath,
   }) {
     return RecitationData(
       state: state ?? this.state,
@@ -50,6 +54,7 @@ class RecitationData {
       error: error,
       isSpeaking: isSpeaking ?? this.isSpeaking,
       recentWaveform: recentWaveform ?? this.recentWaveform,
+      currentRecordingPath: currentRecordingPath ?? this.currentRecordingPath,
     );
   }
 }
@@ -57,9 +62,10 @@ class RecitationData {
 class RecitationController extends StateNotifier<RecitationData> {
   final Ref? _ref;
   final AudioPlayer _player = AudioPlayer();
-  final AudioRecorder _recorder = AudioRecorder();
+  AudioRecorder _recorder = AudioRecorder();
   final ScoringService _scorer = ScoringService();
   Timer? _recordingTimer;
+  StreamSubscription<Amplitude>? _ampSub;
   String? _currentRecordingPath;
 
   RecitationController([this._ref]) : super(const RecitationData()) {
@@ -111,32 +117,89 @@ class RecitationController extends StateNotifier<RecitationData> {
   }
 
   Future<void> startRecording() async {
-    if (state.state != RecitationState.idle) return;
+    // Allow starting when idle or scored (re-recording after previous evaluation)
+    if (state.state == RecitationState.recording || state.state == RecitationState.processing) {
+      return;
+    }
+    if (state.state == RecitationState.playing) {
+      try {
+        await _player.stop();
+      } catch (_) {}
+    }
+
+    _recordingTimer?.cancel();
+    _ampSub?.cancel();
+    _ampSub = null;
+
+    // Safely stop and dispose previous recorder instance to prevent stale native AudioRecord state on Android
+    try {
+      if (await _recorder.isRecording()) {
+        await _recorder.stop();
+      }
+      await _recorder.dispose();
+    } catch (_) {}
+    _recorder = AudioRecorder();
+
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
-      state = state.copyWith(error: 'Microphone permission denied');
+      state = state.copyWith(error: 'Microphone permission denied', state: RecitationState.idle);
       return;
     }
 
+    // Always prefer aacLc (.m4a) for rock-solid cross-platform and Android stability
     AudioEncoder encoder = AudioEncoder.aacLc;
-    if (await _recorder.isEncoderSupported(AudioEncoder.wav)) {
+    String ext = 'm4a';
+    if (!kIsWeb && await _recorder.isEncoderSupported(AudioEncoder.wav)) {
       encoder = AudioEncoder.wav;
+      ext = 'wav';
     }
 
     String? recordingPath;
     if (!kIsWeb) {
       final dir = await getTemporaryDirectory();
-      final ext = encoder == AudioEncoder.wav ? 'wav' : 'm4a';
       recordingPath = '${dir.path}/recitation_${DateTime.now().millisecondsSinceEpoch}.$ext';
     }
     _currentRecordingPath = recordingPath;
 
-    await _recorder.start(
-      RecordConfig(encoder: encoder, sampleRate: 16000, numChannels: 1),
-      path: recordingPath ?? '',
+    try {
+      await _recorder.start(
+        RecordConfig(encoder: encoder, sampleRate: 16000, numChannels: 1),
+        path: recordingPath ?? '',
+      );
+    } catch (e) {
+      debugPrint('[RecitationController] Error starting recorder: $e');
+      state = state.copyWith(error: 'Gagal memulai perekam audio: $e', state: RecitationState.idle);
+      return;
+    }
+
+    state = state.copyWith(
+      state: RecitationState.recording,
+      recordingDuration: Duration.zero,
+      recentWaveform: List.filled(40, 0.08),
+      isSpeaking: false,
+      currentRecordingPath: recordingPath,
+      error: null,
     );
 
-    state = state.copyWith(state: RecitationState.recording, recordingDuration: Duration.zero);
+    // Real-time microphone amplitude streaming for voice recognition & waveform
+    _ampSub?.cancel();
+    _ampSub = _recorder.onAmplitudeChanged(const Duration(milliseconds: 100)).listen((amp) {
+      if (!mounted || state.state != RecitationState.recording) return;
+      final db = amp.current;
+      final isSpeaking = db > -34.0;
+      final norm = ((db + 45.0) / 45.0).clamp(0.08, 1.0);
+
+      final currentBars = List<double>.from(state.recentWaveform ?? List.filled(40, 0.08));
+      if (currentBars.length >= 40) {
+        currentBars.removeAt(0);
+      }
+      currentBars.add(norm);
+
+      state = state.copyWith(
+        isSpeaking: isSpeaking,
+        recentWaveform: currentBars,
+      );
+    });
 
     _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
@@ -150,6 +213,8 @@ class RecitationController extends StateNotifier<RecitationData> {
   Future<void> stopRecording() async {
     if (state.state != RecitationState.recording) return;
     _recordingTimer?.cancel();
+    _ampSub?.cancel();
+    _ampSub = null;
 
     final path = await _recorder.stop();
     if (path != null && path.isNotEmpty) {
@@ -157,20 +222,28 @@ class RecitationController extends StateNotifier<RecitationData> {
     } else {
       _currentRecordingPath ??= 'recording_${DateTime.now().millisecondsSinceEpoch}';
     }
-    state = state.copyWith(state: RecitationState.processing);
+    state = state.copyWith(
+      state: RecitationState.processing,
+      currentRecordingPath: _currentRecordingPath,
+    );
 
     if (state.ayah != null && _currentRecordingPath != null) {
       try {
         final inferenceMode = _ref?.read(inferenceConfigProvider) ?? InferenceMode.auto;
         final settings = _ref?.read(settingsProvider) ?? const AppSettings();
-        final result = await _scorer.scoreRecording(
+        final rawResult = await _scorer.scoreRecording(
           audioPath: _currentRecordingPath!,
           ayah: state.ayah!,
           recordingDuration: state.recordingDuration,
           mode: inferenceMode,
           scoringDifficulty: settings.scoringDifficulty,
         );
-        state = state.copyWith(state: RecitationState.scored, result: result);
+        final result = rawResult.copyWith(audioPath: _currentRecordingPath);
+        state = state.copyWith(
+          state: RecitationState.scored,
+          result: result,
+          currentRecordingPath: _currentRecordingPath,
+        );
         await _saveSession(result);
       } catch (e) {
         state = state.copyWith(state: RecitationState.idle, error: 'Scoring failed: $e');
@@ -199,13 +272,54 @@ class RecitationController extends StateNotifier<RecitationData> {
     }
   }
 
-  void retry() {
-    state = RecitationData(ayah: state.ayah);
+  /// Deletes the recorded audio file from disk and resets the session cleanly.
+  Future<void> deleteRecording() async {
+    _recordingTimer?.cancel();
+    _ampSub?.cancel();
+    _ampSub = null;
+    if (_currentRecordingPath != null && !kIsWeb) {
+      try {
+        final file = File(_currentRecordingPath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (e) {
+        debugPrint('[RecitationController] Delete recording error: $e');
+      }
+    }
+    _currentRecordingPath = null;
+    await retry();
+  }
+
+  Future<void> retry() async {
+    _recordingTimer?.cancel();
+    _ampSub?.cancel();
+    _ampSub = null;
+    if (state.state == RecitationState.recording) {
+      try {
+        await _recorder.stop();
+      } catch (_) {}
+    }
+    if (state.state == RecitationState.playing) {
+      try {
+        await _player.stop();
+      } catch (_) {}
+    }
+    _currentRecordingPath = null;
+    state = RecitationData(
+      ayah: state.ayah,
+      state: RecitationState.idle,
+      recordingDuration: Duration.zero,
+      error: null,
+      isSpeaking: false,
+      currentRecordingPath: null,
+    );
   }
 
   @override
   void dispose() {
     _recordingTimer?.cancel();
+    _ampSub?.cancel();
     _player.dispose();
     _recorder.dispose();
     super.dispose();

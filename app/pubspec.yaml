@@ -57,6 +57,7 @@ flutter:
     - assets/fonts/
     - assets/data/
     - assets/models/
+    - assets/images/
 
   fonts:
     - family: NotoNaskhArabic

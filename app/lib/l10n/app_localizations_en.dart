@@ -9,7 +9,7 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appName => 'Itqan';
+  String get appName => 'Ngaji';
 
   @override
   String get navHome => 'Home';
@@ -27,7 +27,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeGreeting => 'Assalamu Alaikum';
 
   @override
-  String get homeSubtitle => 'Welcome to Itqan';
+  String get homeSubtitle => 'Welcome to Ngaji AI';
 
   @override
   String get homeContinueReading => 'Continue Reading';
@@ -342,10 +342,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorNoInternet => 'No internet connection';
 
   @override
-  String get onboardingWelcomeTitle => 'Welcome to Itqan';
+  String get onboardingWelcomeTitle => 'Welcome to Ngaji AI';
 
   @override
-  String get onboardingWelcomeSubtitle => 'Perfect your Quran recitation';
+  String get onboardingWelcomeSubtitle =>
+      'Perfect your Quran recitation with Ngaji AI';
 
   @override
   String get onboardingLevelTitle => 'What\'s your level?';

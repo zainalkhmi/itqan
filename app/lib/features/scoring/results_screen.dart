@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:itqan/l10n/app_localizations.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/spacing.dart';
@@ -11,7 +14,7 @@ import 'widgets/word_detail_sheet.dart';
 import 'widgets/mistakes_sheet.dart';
 import '../tashih/services/tashih_service.dart';
 
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   final ScoreResult result;
   final Ayah ayah;
   final String surahName;
@@ -28,7 +31,119 @@ class ResultsScreen extends StatelessWidget {
   });
 
   @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlayingUserAudio = false;
+  bool _isAudioDeleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer.playerStateStream.listen((ps) {
+      if (mounted) {
+        setState(() {
+          _isPlayingUserAudio = ps.playing && ps.processingState != ProcessingState.completed;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _togglePlayUserAudio() async {
+    final path = widget.result.audioPath;
+    if (path == null || path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File rekaman suara tidak tersedia.')),
+      );
+      return;
+    }
+
+    try {
+      if (_isPlayingUserAudio) {
+        await _audioPlayer.stop();
+        if (mounted) setState(() => _isPlayingUserAudio = false);
+      } else {
+        if (!kIsWeb) {
+          final file = File(path);
+          if (await file.exists()) {
+            await _audioPlayer.setFilePath(path);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('File rekaman tidak ditemukan di perangkat.')),
+              );
+            }
+            return;
+          }
+        } else {
+          await _audioPlayer.setUrl(path);
+        }
+        await _audioPlayer.play();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memutar rekaman: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteRecording() async {
+    final path = widget.result.audioPath;
+    try {
+      await _audioPlayer.stop();
+      if (path != null && !kIsWeb) {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _isAudioDeleted = true;
+          _isPlayingUserAudio = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('File rekaman suara berhasil dihapus.'),
+              ],
+            ),
+            backgroundColor: Color(0xFFEF4444),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal menghapus rekaman: $e')),
+        );
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final result = widget.result;
+    final ayah = widget.ayah;
+    final surahName = widget.surahName;
+    final onRetry = widget.onRetry;
+    final onNext = widget.onNext;
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : ItqanColors.lightTextPrimary;
     final mistakes = result.wordScores.where((w) => w.error != null).toList();
@@ -136,6 +251,96 @@ class ResultsScreen extends StatelessWidget {
               Text(result.grade, style: ItqanTypography.heading1.copyWith(color: result.color)),
               const SizedBox(height: ItqanSpacing.md),
               ScoreRing(score: result.overall, size: 180),
+
+              // ── Player & Manajemen Hasil Rekaman Suara ────────
+              if (result.audioPath != null && !_isAudioDeleted) ...[
+                const SizedBox(height: ItqanSpacing.lg),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Play / Pause Button
+                      InkWell(
+                        onTap: _togglePlayUserAudio,
+                        borderRadius: BorderRadius.circular(30),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isPlayingUserAudio
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF0F766E),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_isPlayingUserAudio
+                                        ? const Color(0xFFEF4444)
+                                        : const Color(0xFF0F766E))
+                                    .withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            _isPlayingUserAudio
+                                ? Icons.stop_rounded
+                                : Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isPlayingUserAudio
+                                  ? 'Memutar Suara Anda...'
+                                  : 'Rekaman Suara Anda',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13.5,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                            Text(
+                              'Dengarkan pelafalan Anda atau hapus rekaman ini',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? Colors.white70 : Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Hapus Rekaman Button
+                      IconButton(
+                        onPressed: _deleteRecording,
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: Color(0xFFEF4444), size: 22),
+                        tooltip: 'Hapus Rekaman',
+                        style: IconButton.styleFrom(
+                          backgroundColor:
+                              const Color(0xFFEF4444).withOpacity(0.1),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               if (result.mistakes.isNotEmpty) ...[
                 const SizedBox(height: ItqanSpacing.lg),
                 Container(
@@ -315,12 +520,12 @@ class ResultsScreen extends StatelessWidget {
     await service.init();
     await service.submitRecitation(
       studentName: 'Ahmad Santri',
-      surahNumber: ayah.surahNumber,
-      ayahNumber: ayah.ayahNumber,
-      surahName: surahName,
-      textUthmani: ayah.textUthmani,
-      aiScore: result.overall,
-      aiGrade: result.grade,
+      surahNumber: widget.ayah.surahNumber,
+      ayahNumber: widget.ayah.ayahNumber,
+      surahName: widget.surahName,
+      textUthmani: widget.ayah.textUthmani,
+      aiScore: widget.result.overall,
+      aiGrade: widget.result.grade,
     );
 
     if (context.mounted) {
@@ -458,12 +663,55 @@ class _WordAnalysis extends StatelessWidget {
         borderRadius: BorderRadius.circular(ItqanRadius.lg),
         border: Border.all(color: isDark ? Colors.transparent : ItqanColors.lightBorder),
       ),
-      child: Wrap(
-        textDirection: TextDirection.rtl,
-        alignment: WrapAlignment.center,
-        spacing: ItqanSpacing.sm,
-        runSpacing: ItqanSpacing.sm,
-        children: wordScores.map((ws) {
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFF3B82F6),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Lafal Sesuai (Biru)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFEF4444),
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Perlu Perbaikan (Merah)',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black54,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            textDirection: TextDirection.rtl,
+            alignment: WrapAlignment.center,
+            spacing: ItqanSpacing.sm,
+            runSpacing: ItqanSpacing.sm,
+            children: wordScores.map((ws) {
           final wordColor = ws.statusColor;
           return Builder(
             builder: (ctx) => GestureDetector(
@@ -493,6 +741,8 @@ class _WordAnalysis extends StatelessWidget {
             ),
           );
         }).toList(),
+      ),
+        ],
       ),
     );
   }

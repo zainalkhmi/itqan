@@ -125,7 +125,7 @@ void main() {
       expect(find.text('كلمة3'), findsOneWidget);
     });
 
-    testWidgets('Tapping word in normal mode opens word sheet with meaning', (tester) async {
+    testWidgets('Long press word in normal mode opens word sheet with meaning and audio recitation', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -144,8 +144,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Tap word 'كلمة3'
-      await tester.tap(find.text('كلمة3'));
+      // Long press word 'كلمة3'
+      await tester.longPress(find.text('كلمة3'));
       await tester.pumpAndSettle();
 
       // Modal bottom sheet should appear with word translation and Practice button
@@ -154,7 +154,7 @@ void main() {
       expect(find.text('Practice Ayah with AI'), findsOneWidget);
     });
 
-    testWidgets('Tajweed enabled shows rule info and QPC V4 details in word sheet', (tester) async {
+    testWidgets('Tajweed enabled shows rule info and QPC V4 details in word sheet on long press', (tester) async {
       final tajweedLines = <MushafLine>[
         const MushafLine(
           lineNumber: 1,
@@ -203,8 +203,8 @@ void main() {
 
       await tester.pumpAndSettle();
 
-      // Tap word 'بِسْمِ'
-      await tester.tap(find.text('بِسْمِ'));
+      // Long press word 'بِسْمِ'
+      await tester.longPress(find.text('بِسْمِ'));
       await tester.pumpAndSettle();
 
       // Word sheet should contain Tajweed badge and QPC V4 script badge
@@ -212,7 +212,7 @@ void main() {
       expect(find.textContaining('Ghunnah'), findsWidgets);
     });
 
-    testWidgets('Highlights mistake words in red and correct words in green', (tester) async {
+    testWidgets('Highlights mistake words in red and correct words in blue', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -237,7 +237,7 @@ void main() {
       expect(mistakeText.style?.color, const Color(0xFFEF4444));
 
       final correctText = tester.widget<Text>(find.text('كلمة4'));
-      expect(correctText.style?.color, const Color(0xFF34D399));
+      expect(correctText.style?.color, const Color(0xFF3B82F6));
     });
   });
 }

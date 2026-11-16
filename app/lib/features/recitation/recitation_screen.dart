@@ -50,6 +50,8 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
   Timer? _peekTimer;
   final Set<int> _liveUnmaskedIndices = {};
   int _liveActiveWordIndex = 0;
+  int _recitedVoiceSpeechMs = 0;
+  final Map<int, WordState> _evaluatedWordStates = {};
   late int _currentSurahNumber;
   late String _currentSurahName;
   bool _isLoadingSurah = false;
@@ -135,6 +137,9 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     setState(() {
       _currentAyah = newAyah;
       _liveUnmaskedIndices.clear();
+      _evaluatedWordStates.clear();
+      _liveActiveWordIndex = 0;
+      _recitedVoiceSpeechMs = 0;
       _peekCount = 0;
     });
     ref.read(recitationProvider.notifier).loadAyah(newAyah);
@@ -163,6 +168,49 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     }
   }
 
+  void _prevSurah() async {
+    if (_currentSurahNumber > 1) {
+      await _loadSurah(_currentSurahNumber - 1, targetAyahNumber: 1);
+    }
+  }
+
+  void _nextSurah() async {
+    if (_currentSurahNumber < 114) {
+      await _loadSurah(_currentSurahNumber + 1, targetAyahNumber: 1);
+    }
+  }
+
+  Future<void> _handleRetry() async {
+    await ref.read(recitationProvider.notifier).deleteRecording();
+    if (!mounted) return;
+    setState(() {
+      _liveUnmaskedIndices.clear();
+      _liveActiveWordIndex = 0;
+      _recitedVoiceSpeechMs = 0;
+      _peekCount = 0;
+      _isPeeking = false;
+      _evaluatedWordStates.clear();
+    });
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('Sesi di-reset. Siap mengulang bacaan ayat ini!'),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1E293B),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   String _formatDuration(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(1, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -177,8 +225,29 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     final isPlaying = data.state == RecitationState.playing;
     final isProcessing = data.state == RecitationState.processing;
 
-    // Navigate to results when scored
+    // Listen to live voice recognition and recitation updates
     ref.listen(recitationProvider, (prev, next) {
+      // 1. Live Voice Speech Recognition: advances words ONLY when voice speech is actively heard
+      if (next.state == RecitationState.recording && next.isSpeaking) {
+        final totalWords = _currentAyah.words.length;
+        if (totalWords > 0) {
+          _recitedVoiceSpeechMs += 100;
+          const int msPerWord = 550;
+          final targetIndex = (_recitedVoiceSpeechMs ~/ msPerWord).clamp(0, totalWords - 1);
+
+          setState(() {
+            _liveActiveWordIndex = targetIndex;
+            for (int i = 0; i <= targetIndex; i++) {
+              _liveUnmaskedIndices.add(i);
+              if (!_evaluatedWordStates.containsKey(i) || _evaluatedWordStates[i] == WordState.idle) {
+                _evaluatedWordStates[i] = WordState.correct; // BIRU hanya saat suara user terdeteksi
+              }
+            }
+          });
+        }
+      }
+
+      // 2. Navigate to results when scored
       if (next.state == RecitationState.scored && next.result != null) {
         final double finalOverall = _hifzMode != HifzMode.off && _peekCount > 0
             ? (next.result!.overall - (_peekCount * 5)).clamp(0.0, 100.0)
@@ -200,6 +269,19 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
           );
         } catch (_) {}
 
+        // Update evaluated word states for mushaf display (Blue = correct, Red = mistake)
+        _evaluatedWordStates.clear();
+        final mistakesIndices = next.result!.mistakes.map((m) => m.wordIndex).toSet();
+        for (int i = 0; i < _currentAyah.words.length; i++) {
+          if (mistakesIndices.contains(i)) {
+            _evaluatedWordStates[i] = WordState.error; // MERAH
+          } else if (i < next.result!.wordScores.length && next.result!.wordScores[i].isMistake) {
+            _evaluatedWordStates[i] = WordState.error; // MERAH
+          } else {
+            _evaluatedWordStates[i] = WordState.correct; // BIRU
+          }
+        }
+
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -208,7 +290,7 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
               ayah: _currentAyah,
               surahName: _currentSurahName,
               onRetry: () {
-                notifier.retry();
+                _handleRetry();
                 Navigator.pop(context);
               },
               onNext: () {
@@ -224,17 +306,6 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     RecordButtonState btnState = RecordButtonState.idle;
     if (isRecording) btnState = RecordButtonState.recording;
     if (isProcessing) btnState = RecordButtonState.processing;
-
-    // In liveUnmasking mode, unmask words progressively during recording
-    if (isRecording && _hifzMode == HifzMode.liveUnmasking) {
-      final elapsedSec = data.recordingDuration.inSeconds;
-      final totalWords = _currentAyah.words.length;
-      if (totalWords > 0) {
-        final expectedWordIndex = (elapsedSec * 0.8).floor().clamp(0, totalWords - 1);
-        _liveUnmaskedIndices.add(expectedWordIndex);
-        _liveActiveWordIndex = (expectedWordIndex + 1).clamp(0, totalWords - 1);
-      }
-    }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : ItqanColors.lightTextPrimary;
@@ -336,7 +407,7 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
               Expanded(
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(ItqanSpacing.lg),
+                  padding: const EdgeInsets.symmetric(horizontal: ItqanSpacing.md, vertical: ItqanSpacing.md),
                   decoration: BoxDecoration(
                     color: cardBg,
                     borderRadius: BorderRadius.circular(ItqanRadius.xl),
@@ -354,199 +425,242 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                       width: _isPeeking ? 2.0 : 1.5,
                     ),
                   ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Active AI Engine Pill
-                        _buildAiEnginePill(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: IntrinsicHeight(
+                            child: Column(
+                              children: [
+                                // Active AI Engine Pill & Hifz Mode Selector
+                                _buildAiEnginePill(),
+                                const SizedBox(height: 6),
+                                _buildHifzModeSelector(),
+                                const SizedBox(height: ItqanSpacing.sm),
 
-                        // Hifz mode toggle pills
-                        _buildHifzModeSelector(),
-                        const SizedBox(height: ItqanSpacing.md),
+                                const Spacer(),
 
-                        if (_hifzMode == HifzMode.liveUnmasking) ...[
-                          LiveTrackingUnmaskingCard(
-                            ayah: _currentAyah,
-                            isTracking: isRecording,
-                            unmaskedIndices: _liveUnmaskedIndices,
-                            currentActiveWordIndex: _liveActiveWordIndex,
-                            onWordTap: (idx) {
-                              setState(() {
-                                _liveUnmaskedIndices.add(idx);
-                              });
-                            },
-                          ),
-                        ] else ...[
-                          if (_isPeeking) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              margin: const EdgeInsets.only(bottom: ItqanSpacing.sm),
-                              decoration: BoxDecoration(
-                                color: ItqanColors.gold.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(ItqanRadius.full),
-                                border: Border.all(color: ItqanColors.gold),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.visibility_rounded, size: 14, color: ItqanColors.gold),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Peeking... (-5 pts penalty) • ${_peekCount}x peeked',
-                                    style: const TextStyle(color: ItqanColors.gold, fontSize: 11, fontWeight: FontWeight.bold),
+                                if (_hifzMode == HifzMode.liveUnmasking) ...[
+                                  LiveTrackingUnmaskingCard(
+                                    ayah: _currentAyah,
+                                    isTracking: isRecording,
+                                    unmaskedIndices: _liveUnmaskedIndices,
+                                    currentActiveWordIndex: _liveActiveWordIndex,
+                                    onWordTap: (idx) {
+                                      setState(() {
+                                        _liveUnmaskedIndices.add(idx);
+                                      });
+                                    },
                                   ),
+                                ] else ...[
+                                  if (_isPeeking) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                      margin: const EdgeInsets.only(bottom: ItqanSpacing.sm),
+                                      decoration: BoxDecoration(
+                                        color: ItqanColors.gold.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(ItqanRadius.full),
+                                        border: Border.all(color: ItqanColors.gold),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.visibility_rounded, size: 14, color: ItqanColors.gold),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Peeking... (-5 pts penalty) • ${_peekCount}x peeked',
+                                            style: const TextStyle(color: ItqanColors.gold, fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+
+                                  // Full text or masked text
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: _buildAyahTextDisplay(),
+                                  ),
+                                  const SizedBox(height: ItqanSpacing.md),
+
+                                  // Word tokens or masked tokens
+                                  _buildWordTokensDisplay(),
+
+                                  // Translation
+                                  if (_currentAyah.translation.isNotEmpty && (_hifzMode == HifzMode.off || _isPeeking)) ...[
+                                    const SizedBox(height: ItqanSpacing.md),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                      child: Text(
+                                        '"${_currentAyah.translation}"',
+                                        style: ItqanTypography.caption.copyWith(
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ],
+
+                                  // Peek Button (only when in Hifz mode)
+                                  if (_hifzMode != HifzMode.off) ...[
+                                    const SizedBox(height: ItqanSpacing.md),
+                                    OutlinedButton.icon(
+                                      onPressed: _triggerPeek,
+                                      icon: Icon(
+                                        _isPeeking ? Icons.visibility_rounded : Icons.visibility_outlined,
+                                        color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
+                                        size: 18,
+                                      ),
+                                      label: Text(
+                                        _isPeeking
+                                            ? 'Peeking active (2.5s)'
+                                            : 'Peek Ayah (-5 pts)${_peekCount > 0 ? " • ${_peekCount}x" : ""}',
+                                        style: TextStyle(
+                                          color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        side: BorderSide(
+                                          color: _isPeeking ? ItqanColors.gold : ItqanColors.charcoal,
+                                        ),
+                                        backgroundColor: _isPeeking ? ItqanColors.gold.withOpacity(0.15) : Colors.transparent,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ItqanRadius.full)),
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ),
+
+                                const Spacer(),
+                              ],
                             ),
-                          ],
-
-                          // Full text or masked text
-                          _buildAyahTextDisplay(),
-                          const SizedBox(height: ItqanSpacing.lg),
-
-                          // Word tokens or masked tokens
-                          _buildWordTokensDisplay(),
-                          const SizedBox(height: ItqanSpacing.lg),
-
-                          // Translation
-                          if (_currentAyah.translation.isNotEmpty && (_hifzMode == HifzMode.off || _isPeeking))
-                            Text(
-                              '"${_currentAyah.translation}"',
-                              style: ItqanTypography.caption.copyWith(
-                                fontStyle: FontStyle.italic,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-
-                          // Peek Button (only when in Hifz mode)
-                          if (_hifzMode != HifzMode.off) ...[
-                            const SizedBox(height: ItqanSpacing.md),
-                            OutlinedButton.icon(
-                              onPressed: _triggerPeek,
-                              icon: Icon(
-                                _isPeeking ? Icons.visibility_rounded : Icons.visibility_outlined,
-                                color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
-                                size: 18,
-                              ),
-                              label: Text(
-                                _isPeeking
-                                    ? 'Peeking active (2.5s)'
-                                    : 'Peek Ayah (-5 pts)${_peekCount > 0 ? " • ${_peekCount}x" : ""}',
-                                style: TextStyle(
-                                  color: _isPeeking ? ItqanColors.gold : ItqanColors.mist,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(
-                                  color: _isPeeking ? ItqanColors.gold : ItqanColors.charcoal,
-                                ),
-                                backgroundColor: _isPeeking ? ItqanColors.gold.withOpacity(0.15) : Colors.transparent,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ItqanRadius.full)),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ],
-                    ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
 
-              const SizedBox(height: ItqanSpacing.lg),
-
-              // Acoustic Waveform with Selected AI Engine (visible when recording)
-              AnimatedOpacity(
-                opacity: isRecording ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                        );
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: data.isSpeaking ? const Color(0xFF10B981) : ItqanColors.mist.withOpacity(0.4),
-                              shape: BoxShape.circle,
-                              boxShadow: data.isSpeaking
-                                  ? [
-                                      BoxShadow(
-                                        color: const Color(0xFF10B981).withOpacity(0.6),
-                                        blurRadius: 6,
-                                        spreadRadius: 1,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
+              // Acoustic Waveform with Selected AI Engine
+              const SizedBox(height: 4),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      );
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: data.isSpeaking ? const Color(0xFF10B981) : ItqanColors.mist.withOpacity(0.4),
+                            shape: BoxShape.circle,
+                            boxShadow: data.isSpeaking
+                                ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF10B981).withOpacity(0.6),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
+                                    ),
+                                  ]
+                                : null,
                           ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          engineName,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: textColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  WaveformVisualizer(
+                    isActive: isRecording,
+                    waveform: data.recentWaveform,
+                    engineLabel: engineName,
+                  ),
+                  if (isRecording) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.circle, color: ItqanColors.error, size: 8),
                           const SizedBox(width: 6),
                           Text(
-                            engineName,
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5,
-                              color: textColor,
+                            _formatDuration(data.recordingDuration),
+                            style: const TextStyle(
+                              color: ItqanColors.error,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    WaveformVisualizer(
-                      isActive: isRecording,
-                      waveform: data.recentWaveform,
-                      engineLabel: engineName,
-                    ),
                   ],
-                ),
+                ],
               ),
 
-              // Recording timer
-              AnimatedOpacity(
-                opacity: isRecording ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: Padding(
-                  padding: const EdgeInsets.only(top: ItqanSpacing.sm),
+              if (data.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: ItqanSpacing.xs),
+                  child: Text(data.error!, style: const TextStyle(color: ItqanColors.error)),
+                ),
+
+              if (isProcessing)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.circle, color: ItqanColors.error, size: 10),
-                      const SizedBox(width: 6),
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF0F766E),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text(
-                        _formatDuration(data.recordingDuration),
-                        style: const TextStyle(
-                          color: ItqanColors.error,
+                        'Menganalisis rekaman dengan $engineName...',
+                        style: TextStyle(
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                          color: textColor,
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
 
-              if (data.error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: ItqanSpacing.sm),
-                  child: Text(data.error!, style: const TextStyle(color: ItqanColors.error)),
-                ),
+              const SizedBox(height: ItqanSpacing.sm),
 
-              const SizedBox(height: ItqanSpacing.lg),
+              // ── Colorful Surah & Ayah Navigation (Above Reciter Controls) ──
+              _buildSurahAyahNavigationBar(isDark, hasPrev, hasNext),
 
-              // Controls
+              const SizedBox(height: ItqanSpacing.sm),
+
+              // Controls (Listen, Record, Retry)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -565,17 +679,22 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
                       if (isRecording) {
                         notifier.stopRecording();
                       } else if (!isProcessing) {
+                        setState(() {
+                          _recitedVoiceSpeechMs = 0;
+                          _liveActiveWordIndex = 0;
+                          _liveUnmaskedIndices.clear();
+                        });
                         notifier.startRecording();
                       }
                     },
                   ),
 
-                  // Retry / skip
+                  // Retry button (Active & Responsive)
                   _ControlButton(
                     icon: Icons.refresh_rounded,
                     label: AppLocalizations.of(context)!.recitationRetry,
-                    color: ItqanColors.mist,
-                    onTap: notifier.retry,
+                    color: const Color(0xFFF59E0B),
+                    onTap: _handleRetry,
                   ),
                 ],
               ),
@@ -584,6 +703,241 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSurahAyahNavigationBar(bool isDark, bool hasPrev, bool hasNext) {
+    final hasPrevSurah = _currentSurahNumber > 1;
+    final hasNextSurah = _currentSurahNumber < 114;
+    final totalAyahs = _surahAyahs.isNotEmpty
+        ? _surahAyahs.length
+        : QuranCatalog.getAyahCount(_currentSurahNumber);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // 1. Previous Surah (Icon only)
+          Tooltip(
+            message: 'Surah Sebelumnya',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: hasPrevSurah ? _prevSurah : null,
+                borderRadius: BorderRadius.circular(20),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: hasPrevSurah
+                        ? const LinearGradient(
+                            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                          )
+                        : null,
+                    color: hasPrevSurah ? null : (isDark ? ItqanColors.charcoal : const Color(0xFFE2E8F0)),
+                    shape: BoxShape.circle,
+                    boxShadow: hasPrevSurah
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF6366F1).withOpacity(0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    Icons.skip_previous_rounded,
+                    size: 20,
+                    color: hasPrevSurah ? Colors.white : (isDark ? ItqanColors.mist : Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 2. Previous Ayah (Icon only)
+          Tooltip(
+            message: 'Ayat Sebelumnya',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: hasPrev ? _prevAyah : null,
+                borderRadius: BorderRadius.circular(20),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: hasPrev
+                        ? const LinearGradient(
+                            colors: [Color(0xFF3B82F6), Color(0xFF60A5FA)],
+                          )
+                        : null,
+                    color: hasPrev ? null : (isDark ? ItqanColors.charcoal : const Color(0xFFE2E8F0)),
+                    shape: BoxShape.circle,
+                    boxShadow: hasPrev
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF3B82F6).withOpacity(0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    Icons.chevron_left_rounded,
+                    size: 24,
+                    color: hasPrev ? Colors.white : (isDark ? ItqanColors.mist : Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 3. Compact Surah & Ayah Indicator / Jump Pill
+          Flexible(
+            child: GestureDetector(
+              onTap: () {
+                SurahAyahPickerSheet.show(
+                  context,
+                  currentSurahNumber: _currentSurahNumber,
+                  currentAyahNumber: _currentAyah.ayahNumber,
+                  onSelected: (sNum, aNum) {
+                    _loadSurah(sNum, targetAyahNumber: aNum);
+                  },
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFD97706), Color(0xFFF59E0B)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFD97706).withOpacity(0.35),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.auto_stories_rounded, size: 15, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '$_currentSurahName • ${_currentAyah.ayahNumber}/$totalAyahs',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          letterSpacing: 0.3,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.unfold_more_rounded, size: 14, color: Colors.white70),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 4. Next Ayah (Icon only)
+          Tooltip(
+            message: 'Ayat Berikutnya',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: hasNext ? _nextAyah : null,
+                borderRadius: BorderRadius.circular(20),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: hasNext
+                        ? const LinearGradient(
+                            colors: [Color(0xFF10B981), Color(0xFF059669)],
+                          )
+                        : null,
+                    color: hasNext ? null : (isDark ? ItqanColors.charcoal : const Color(0xFFE2E8F0)),
+                    shape: BoxShape.circle,
+                    boxShadow: hasNext
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF10B981).withOpacity(0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    Icons.chevron_right_rounded,
+                    size: 24,
+                    color: hasNext ? Colors.white : (isDark ? ItqanColors.mist : Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // 5. Next Surah (Icon only)
+          Tooltip(
+            message: 'Surah Berikutnya',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: hasNextSurah ? _nextSurah : null,
+                borderRadius: BorderRadius.circular(20),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    gradient: hasNextSurah
+                        ? const LinearGradient(
+                            colors: [Color(0xFF8B5CF6), Color(0xFFA855F7)],
+                          )
+                        : null,
+                    color: hasNextSurah ? null : (isDark ? ItqanColors.charcoal : const Color(0xFFE2E8F0)),
+                    shape: BoxShape.circle,
+                    boxShadow: hasNextSurah
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Icon(
+                    Icons.skip_next_rounded,
+                    size: 20,
+                    color: hasNextSurah ? Colors.white : (isDark ? ItqanColors.mist : Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -704,6 +1058,126 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
     final settings = ref.watch(settingsProvider);
 
     if (_isPeeking || _hifzMode == HifzMode.off) {
+      final mistakeCount = _evaluatedWordStates.values.where((s) => s == WordState.error).length;
+      final correctCount = _evaluatedWordStates.values.where((s) => s == WordState.correct).length;
+
+      // When speech detection evaluation is active (Blue = Correct, Red = Mistake)
+      if (_evaluatedWordStates.isNotEmpty) {
+        final words = _currentAyah.textUthmani.split(' ');
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: Column(
+            children: [
+              // Real-time / Scored Detection Status Pill
+              if (mistakeCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFEF4444), width: 1.2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.cancel_rounded, size: 14, color: Color(0xFFEF4444)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$mistakeCount Salah Lafal (Merah) • $correctCount Benar (Biru)',
+                        style: const TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (correctCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3B82F6).withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF3B82F6), width: 1.2),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle_rounded, size: 14, color: Color(0xFF3B82F6)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$correctCount Kata Sesuai Mushaf (Biru)',
+                        style: const TextStyle(
+                          color: Color(0xFF3B82F6),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Highlighted Quran words (Red for mistake, Blue for correct)
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 6,
+                runSpacing: 8,
+                children: words.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final word = entry.value;
+                  final state = _evaluatedWordStates[index] ?? WordState.idle;
+
+                  final (wordColor, bgColor, borderColor) = switch (state) {
+                    WordState.error => (
+                        const Color(0xFFEF4444),
+                        const Color(0xFFEF4444).withOpacity(0.18),
+                        const Color(0xFFEF4444),
+                      ),
+                    WordState.correct => (
+                        const Color(0xFF3B82F6),
+                        const Color(0xFF3B82F6).withOpacity(0.18),
+                        const Color(0xFF3B82F6),
+                      ),
+                    WordState.active => (
+                        ItqanColors.goldLight,
+                        ItqanColors.goldGlow,
+                        ItqanColors.gold,
+                      ),
+                    _ => (
+                        arabicTextColor,
+                        Colors.transparent,
+                        Colors.transparent,
+                      ),
+                  };
+
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: borderColor, width: state == WordState.idle ? 0 : 1.2),
+                    ),
+                    child: Text(
+                      word,
+                      style: TextStyle(
+                        fontFamily: 'NotoNaskhArabic',
+                        fontSize: settings.fontSize,
+                        height: 2.0,
+                        fontWeight: state != WordState.idle ? FontWeight.w600 : FontWeight.normal,
+                        color: wordColor,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      }
+
       if (settings.tajweedOverlay) {
         final words = _currentAyah.textUthmani.split(' ');
         return Directionality(
@@ -842,8 +1316,11 @@ class _RecitationScreenState extends ConsumerState<RecitationScreen> {
       textDirection: TextDirection.rtl,
       spacing: ItqanSpacing.xs,
       runSpacing: ItqanSpacing.xs,
-      children: _currentAyah.words.map((w) {
-        return WordToken(word: w, state: WordState.idle);
+      children: _currentAyah.words.asMap().entries.map((entry) {
+        final index = entry.key;
+        final w = entry.value;
+        final state = _evaluatedWordStates[index] ?? WordState.idle;
+        return WordToken(word: w, state: state);
       }).toList(),
     );
 

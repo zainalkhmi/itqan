@@ -68,12 +68,16 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   int _recitingSeconds = 0;
   Timer? _recitingTimer;
   AudioRecorder? _liveRecorder;
+  StreamSubscription<Amplitude>? _liveAmpSub;
   String? _liveAudioPath;
   List<RecitationMistake> _liveMistakes = [];
   final Set<String> _mistakeWordKeys = {};
   final Set<String> _correctWordKeys = {};
   String? _activeVerseKey;
   String? _activeWordKey;
+  bool _isVoiceSpeaking = false;
+  int _voiceActiveSpeechMs = 0;
+  int _currentRecitedWordIndex = 0;
 
   @override
   void initState() {
@@ -89,6 +93,7 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
   void dispose() {
     _saveDebounce?.cancel();
     _recitingTimer?.cancel();
+    _liveAmpSub?.cancel();
     _liveRecorder?.dispose();
     _pageController.dispose();
     super.dispose();
@@ -104,7 +109,16 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
     if (!isTest) {
       try {
-        _liveRecorder ??= AudioRecorder();
+        try {
+          if (_liveRecorder != null && await _liveRecorder!.isRecording()) {
+            await _liveRecorder!.stop();
+          }
+        } catch (_) {}
+        try {
+          await _liveRecorder?.dispose();
+        } catch (_) {}
+        _liveRecorder = AudioRecorder();
+
         final hasPermission = await _liveRecorder!.hasPermission();
         if (!hasPermission) {
           if (mounted) {
@@ -118,15 +132,17 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
           return;
         }
 
+        // Identical encoder and config to RecitationController (WAV if supported, else AAC-LC)
         AudioEncoder encoder = AudioEncoder.aacLc;
-        if (await _liveRecorder!.isEncoderSupported(AudioEncoder.wav)) {
+        String ext = 'm4a';
+        if (!kIsWeb && await _liveRecorder!.isEncoderSupported(AudioEncoder.wav)) {
           encoder = AudioEncoder.wav;
+          ext = 'wav';
         }
 
         String? recordingPath;
         if (!kIsWeb) {
           final dir = await getTemporaryDirectory();
-          final ext = encoder == AudioEncoder.wav ? 'wav' : 'm4a';
           recordingPath = '${dir.path}/mushaf_live_${DateTime.now().millisecondsSinceEpoch}.$ext';
         }
         _liveAudioPath = recordingPath;
@@ -135,8 +151,23 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
           RecordConfig(encoder: encoder, sampleRate: 16000, numChannels: 1),
           path: recordingPath ?? '',
         );
+
+        // Real-time microphone audio stream: detects voice activity and moves words ONLY when speech is heard
+        _liveAmpSub?.cancel();
+        _liveAmpSub = _liveRecorder!.onAmplitudeChanged(const Duration(milliseconds: 100)).listen((amp) {
+          _handleLiveVoiceAmplitude(amp);
+        });
       } catch (e) {
         debugPrint('[LiveRecitation] Recorder start exception: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Gagal memulai perekam audio: $e'),
+              backgroundColor: ItqanColors.mistakeIncorrect,
+            ),
+          );
+        }
+        return;
       }
     }
 
@@ -146,6 +177,9 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       _recitingSeconds = 0;
       _activeVerseKey = null;
       _activeWordKey = null;
+      _isVoiceSpeaking = false;
+      _voiceActiveSpeechMs = 0;
+      _currentRecitedWordIndex = 0;
       _liveMistakes = [];
       _mistakeWordKeys.clear();
       _correctWordKeys.clear();
@@ -160,13 +194,79 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       setState(() {
         _recitingSeconds++;
       });
-      _processLiveRecitationProgress();
+      // Do NOT move words blindly by seconds clock! Only voice recognition advances words.
+    });
+  }
+
+  void _handleLiveVoiceAmplitude(Amplitude amp) {
+    if (!_isLiveReciting || !mounted) return;
+
+    final db = amp.current;
+    // Voice Activity Detection threshold:
+    // Human Quranic speech typically exceeds -34.0 dBFS. Silence or room noise is lower.
+    final isSpeaking = db > -34.0;
+
+    if (!isSpeaking) {
+      // User is silent, taking a pause, or listening: DO NOT move words or ayah!
+      if (_isVoiceSpeaking) {
+        setState(() {
+          _isVoiceSpeaking = false;
+        });
+      }
+      return;
+    }
+
+    _isVoiceSpeaking = true;
+    _voiceActiveSpeechMs += 100;
+
+    final pageAsync = ref.read(_pageDataProvider(_currentPage));
+    final pageData = pageAsync.valueOrNull;
+    if (pageData == null || pageData.verses.isEmpty) return;
+
+    final allWords = <PageWord>[];
+    for (final v in pageData.verses) {
+      allWords.addAll(v.words.where((w) => !w.isVerseEnd));
+    }
+    if (allWords.isEmpty) return;
+
+    // Advance word position ONLY when enough real vocal speech energy is accumulated (~550ms per word)
+    const int msPerWord = 550;
+    final targetIndex = (_voiceActiveSpeechMs ~/ msPerWord).clamp(0, allWords.length - 1);
+
+    final activeWord = allWords[targetIndex];
+    final activeKey = '${activeWord.verseKey}:${activeWord.position}';
+
+    setState(() {
+      _currentRecitedWordIndex = targetIndex;
+      _activeVerseKey = activeWord.verseKey;
+      _activeWordKey = activeKey;
+
+      // Words recited with voice are confirmed as correct (Blue in mushaf)
+      for (int i = 0; i < targetIndex; i++) {
+        final w = allWords[i];
+        final key = '${w.verseKey}:${w.position}';
+        if (!_mistakeWordKeys.contains(key)) {
+          _correctWordKeys.add(key);
+        }
+      }
     });
   }
 
   Future<void> _stopLiveReciting() async {
     final isTest = !kIsWeb && Platform.environment.containsKey('FLUTTER_TEST');
     _recitingTimer?.cancel();
+    _liveAmpSub?.cancel();
+    _liveAmpSub = null;
+
+    if (mounted) {
+      setState(() {
+        _isLiveReciting = false;
+        _isVoiceSpeaking = false;
+        _activeVerseKey = null;
+        _activeWordKey = null;
+      });
+    }
+
     String? finalPath;
     if (!isTest) {
       try {
@@ -180,17 +280,10 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       finalPath ??= _liveAudioPath;
       await _evaluateCurrentPageRecitation(finalPath);
     }
-
-    if (mounted) {
-      setState(() {
-        _isLiveReciting = false;
-        _activeVerseKey = null;
-        _activeWordKey = null;
-      });
-    }
   }
 
   void _processLiveRecitationProgress() {
+    // Legacy stub preserved for widget test compatibility
     final pageAsync = ref.read(_pageDataProvider(_currentPage));
     final pageData = pageAsync.valueOrNull;
     if (pageData == null || pageData.verses.isEmpty) return;
@@ -201,22 +294,13 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
     }
     if (allWords.isEmpty) return;
 
-    // Track active word with high precision kata-per-kata
-    final activeIndex = (_recitingSeconds * 0.85).floor().clamp(0, allWords.length - 1);
+    final activeIndex = _currentRecitedWordIndex.clamp(0, allWords.length - 1);
     final activeWord = allWords[activeIndex];
     final activeKey = '${activeWord.verseKey}:${activeWord.position}';
 
     setState(() {
       _activeVerseKey = activeWord.verseKey;
       _activeWordKey = activeKey;
-
-      for (int i = 0; i <= activeIndex; i++) {
-        final w = allWords[i];
-        final key = '${w.verseKey}:${w.position}';
-        if (!_mistakeWordKeys.contains(key)) {
-          _correctWordKeys.add(key);
-        }
-      }
     });
   }
 
@@ -285,10 +369,11 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
       });
 
       if (_liveMistakes.isNotEmpty) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${_liveMistakes.length} mistakes detected. Tap mistakes pill to review.',
+              '${_liveMistakes.length} mistakes detected. Tap pill to review or dismiss.',
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
             ),
             backgroundColor: ItqanColors.charcoal,
@@ -296,14 +381,48 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
               label: 'View',
               textColor: ItqanColors.gold,
               onPressed: () {
-                MistakesSheet.show(context, mistakes: _liveMistakes);
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                MistakesSheet.show(
+                  context,
+                  mistakes: _liveMistakes,
+                  onClear: _clearRecitationEvaluation,
+                );
               },
             ),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
+    }
+  }
+
+  Future<void> _clearRecitationEvaluation() async {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    if (_liveAudioPath != null && !kIsWeb) {
+      try {
+        final file = File(_liveAudioPath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
+    _liveAudioPath = null;
+    if (mounted) {
+      setState(() {
+        _liveMistakes.clear();
+        _mistakeWordKeys.clear();
+        _correctWordKeys.clear();
+        _activeVerseKey = null;
+        _activeWordKey = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tanda kesalahan & evaluasi mushaf telah dibersihkan.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -895,7 +1014,25 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
               const SizedBox(width: 8),
               _MistakesPill(
                 count: _liveMistakes.length,
-                onTap: () => MistakesSheet.show(context, mistakes: _liveMistakes),
+                onTap: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  MistakesSheet.show(
+                    context,
+                    mistakes: _liveMistakes,
+                    onClear: _clearRecitationEvaluation,
+                  );
+                },
+                onClear: _clearRecitationEvaluation,
+              ),
+            ],
+            if (_liveMistakes.isNotEmpty || _correctWordKeys.isNotEmpty) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: ItqanColors.warning, size: 18),
+                onPressed: _clearRecitationEvaluation,
+                tooltip: 'Hapus Rekaman & Reset Evaluasi',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
               ),
             ],
           ],
@@ -925,21 +1062,6 @@ class _MushafPageScreenState extends ConsumerState<MushafPageScreen> {
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.symmetric(horizontal: 4),
           ),
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded, color: ItqanColors.mist, size: 22),
-            onPressed: _currentPage > 1 ? () => _jumpToPage(_currentPage - 1) : null,
-            tooltip: 'Previous Page',
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-          ),
-          IconButton(
-            icon: const Icon(Icons.first_page_rounded, color: ItqanColors.mist, size: 22),
-            onPressed: _showJumpDialog,
-            tooltip: 'Jump Page',
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-          ),
-
           const SizedBox(width: 6),
 
           // Glowing Green Action Button (Microphone or Stop)
@@ -1014,8 +1136,9 @@ class _PulsingRedDotState extends State<_PulsingRedDot>
 class _MistakesPill extends StatelessWidget {
   final int count;
   final VoidCallback onTap;
+  final VoidCallback? onClear;
 
-  const _MistakesPill({required this.count, required this.onTap});
+  const _MistakesPill({required this.count, required this.onTap, this.onClear});
 
   @override
   Widget build(BuildContext context) {
@@ -1030,32 +1153,55 @@ class _MistakesPill extends StatelessWidget {
         ? '$count ${count == 1 ? 'Mistake' : 'Mistakes'}'
         : '0 Mistakes';
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: border, width: 1.2),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (hasMistakes) ...[
-              const Icon(Icons.error_outline_rounded, size: 13, color: Color(0xFFEF4444)),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              text,
-              style: TextStyle(
-                color: border,
-                fontSize: 11.5,
-                fontWeight: FontWeight.bold,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 1.2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: onTap,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (hasMistakes) ...[
+                  const Icon(Icons.error_outline_rounded, size: 13, color: Color(0xFFEF4444)),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: border,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (hasMistakes && onClear != null) ...[
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: onClear,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFEF4444).withOpacity(0.3),
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 13,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }

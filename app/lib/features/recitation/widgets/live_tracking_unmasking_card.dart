@@ -149,18 +149,18 @@ class _LiveTrackingUnmaskingCardState extends State<LiveTrackingUnmaskingCard> w
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: isUnmasked
-                              ? ItqanColors.correct.withValues(alpha: 0.15)
+                              ? const Color(0xFF3B82F6).withOpacity(0.18)
                               : (isCurrent
                                   ? ItqanColors.gold.withValues(alpha: 0.15 * _glowAnimation.value)
                                   : ItqanColors.charcoal.withValues(alpha: 0.5)),
                           borderRadius: BorderRadius.circular(ItqanRadius.md),
                           border: Border.all(
                             color: isUnmasked
-                                ? ItqanColors.correct
+                                ? const Color(0xFF3B82F6)
                                 : (isCurrent
                                     ? ItqanColors.gold.withValues(alpha: _glowAnimation.value)
                                     : Colors.transparent),
-                            width: isCurrent ? 2.0 : 1.0,
+                            width: isCurrent ? 2.0 : 1.2,
                           ),
                         ),
                         child: Text(
@@ -170,7 +170,7 @@ class _LiveTrackingUnmaskingCardState extends State<LiveTrackingUnmaskingCard> w
                             fontSize: 22,
                             fontWeight: isUnmasked ? FontWeight.w600 : FontWeight.normal,
                             color: isUnmasked
-                                ? ItqanColors.correct
+                                ? const Color(0xFF3B82F6)
                                 : (isCurrent ? ItqanColors.gold : ItqanColors.mist.withValues(alpha: 0.5)),
                           ),
                         ),
